@@ -5,21 +5,25 @@ from config import DEVICE
 from models import PUNCT_MODELS, PUNCT_TOKENIZERS, GRAMMAR_MODEL, GRAMMAR_TOKENIZER
 from resources import DIACRITIC_DICT
 
+# for k, v in list(DIACRITIC_DICT.items())[:10]:
+#     print(f"Sample entry: {repr(k)} -> {repr(v)}")
+
+
 @lru_cache(maxsize=4096)
 def restore_diacritics(text: str) -> str:
-    words = []
+    restored_words = []
     for w in text.split():
         lw = w.lower()
         if lw in DIACRITIC_DICT:
             if w.isupper():
-                words.append(DIACRITIC_DICT[lw].upper())
+                restored_words.append(DIACRITIC_DICT[lw].upper())
             elif w.istitle():
-                words.append(DIACRITIC_DICT[lw].capitalize())
+                restored_words.append(DIACRITIC_DICT[lw].capitalize())
             else:
-                words.append(DIACRITIC_DICT[lw])
+                restored_words.append(DIACRITIC_DICT[lw])
         else:
-            words.append(w)
-    return " ".join(words)
+            restored_words.append(w)
+    return " ".join(restored_words)
 
 def correct_punctuation(text, model_choice="kredor"):
     model = PUNCT_MODELS[model_choice]

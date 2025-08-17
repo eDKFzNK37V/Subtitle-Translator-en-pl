@@ -58,6 +58,20 @@ class SubtitleLogger:
         }
         self.entries.append(entry)
 
+        # Print to console for comparison
+        print(f"[Line {index + 1}] — {timestamp}")
+        print(f"Original:   {original}")
+        print(f"Translated: {translated}")
+        print(f"Corrected:  {corrected}")
+        print(f"Word Diff:  {word_diff}")
+        if diacritics:
+            print(f"Diacritics Added: {', '.join(diacritics)}")
+        if tags_before != tags_after:
+            print(f"Tags changed:")
+            print(f"  Before: {tags_before}")
+            print(f"  After:  {tags_after}")
+        print("-" * 60)
+
         with open(self.log_txt, "a", encoding="utf-8") as f:
             f.write(f"[Line {index + 1}] — {timestamp}\n")
             f.write(f"Original:   {original}\n")

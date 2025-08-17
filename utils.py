@@ -12,7 +12,12 @@ def _detect_encoding(path, default="utf-8"):
         return default
 
 def format_ass(text, style='normal'):
-    ...
+    """Apply ASS subtitle styling to text."""
+    if style == 'italic':
+        return r"{\i1}" + text + r"{\i0}"
+    elif style == 'bold':
+        return r"{\b1}" + text + r"{\b0}"
+    return text
 
 def load_subtitle_lines(file_path):
     ext = file_path.split('.')[-1].lower()
@@ -32,10 +37,11 @@ def save_subtitle_lines(lines, file_path, subs=None):
     ext = file_path.split('.')[-1].lower()
     if ext in ["ass", "srt"] and subs:
         for i, line in enumerate(lines):
+            #print(f"SAVING LINE {i}: {repr(line)}")  # Debug print
             subs[i].text = line.strip()
-        subs.save(file_path, encoding="utf-8", format=ext)
+        subs.save(file_path, encoding="utf-8-sig", format=ext)  # <-- use utf-8-sig
     elif ext == "txt":
-        with open(file_path, "w", encoding="utf-8") as f:
+        with open(file_path, "w", encoding="utf-8-sig") as f:
             for line in lines:
                 f.write(line.strip() + "\n")
     else:
