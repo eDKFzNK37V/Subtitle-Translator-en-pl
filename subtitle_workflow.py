@@ -4,7 +4,9 @@ from pipeline     import correct_text_batch
 from translate    import translate_batch
 from utils        import load_subtitle_lines, save_subtitle_lines
 
-def translate_subtitles(file_path, src_lang, tgt_lang,
+def translate_subtitles(file_path, 
+                        src_lang, 
+                        tgt_lang,
                         polish_only=False,
                         translation_callback=None,
                         post_callback=None):

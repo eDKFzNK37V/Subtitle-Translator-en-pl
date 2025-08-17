@@ -1,3 +1,4 @@
+import torch
 from tqdm import tqdm
 from config import DEVICE
 from models import get_translation_model
@@ -30,11 +31,11 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=8, progress_callback=N
         ).to(DEVICE)
 
         bos_token_id = TRANS_TOKENIZER.get_lang_id(tgt_lang)
-        outputs = TRANS_MODEL.generate(
-            **encoded,
-            forced_bos_token_id=bos_token_id,
-            max_length=256
-        )
+        with torch.no_grad():
+            outputs = TRANS_MODEL.generate(
+                **encoded,
+                forced_bos_token_id=bos_token_id,
+                max_length=256)
 
         decoded = TRANS_TOKENIZER.batch_decode(outputs, skip_special_tokens=True)
         translated.extend(decoded)
