@@ -5,20 +5,43 @@ from models import get_translation_model
 # Load model once
 TRANS_MODEL, TRANS_TOKENIZER = get_translation_model()
 
-def translate_batch(lines, src_lang, tgt_lang, batch_size=8):
+def translate_batch(lines, src_lang, tgt_lang, batch_size=8, progress_callback=None):
     translated = []
-    total_batches = (len(lines) + batch_size - 1) // batch_size
+    total_lines = len(lines)
+    total_batches = (total_lines + batch_size - 1) // batch_size
 
-    for i in tqdm(range(0, len(lines), batch_size), total=total_batches,
-                  desc="Translating", unit="batch", colour="green", dynamic_ncols=True):
+    for i in tqdm(
+        range(0, total_lines, batch_size),
+        total=total_batches,
+        desc="Translating",
+        unit="batch",
+        colour="green",
+        dynamic_ncols=True
+    ):
         batch = lines[i: i + batch_size]
-        # Set source language before encoding
+
+        # Translation logic...
         TRANS_TOKENIZER.src_lang = src_lang
-        encoded = TRANS_TOKENIZER(batch, return_tensors="pt", padding=True, truncation=True).to(DEVICE)
-        # Get BOS token for target language
+        encoded = TRANS_TOKENIZER(
+            batch,
+            return_tensors="pt",
+            padding=True,
+            truncation=True
+        ).to(DEVICE)
+
         bos_token_id = TRANS_TOKENIZER.get_lang_id(tgt_lang)
-        outputs = TRANS_MODEL.generate(**encoded, forced_bos_token_id=bos_token_id, max_length=256)
+        outputs = TRANS_MODEL.generate(
+            **encoded,
+            forced_bos_token_id=bos_token_id,
+            max_length=256
+        )
+
         decoded = TRANS_TOKENIZER.batch_decode(outputs, skip_special_tokens=True)
         translated.extend(decoded)
+
+        # 🔹 Update GUI
+        if progress_callback:
+            current_line_number = i + len(batch)
+            progress_callback(current_line_number, total_lines)
 
     return translated

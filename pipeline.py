@@ -20,12 +20,14 @@ def correct_text_batch(lines, lang, progress_callback=None):
     if lang.lower() == "pl":
         lines = [restore_diacritics(line) for line in lines]
         matches = [tool_pl.check(line) for line in lines]
-        lines = [language_tool_python.utils.correct(line, match) for line, match in zip(lines, matches)]
+        lines = [language_tool_python.utils.correct(line, match)
+                 for line, match in zip(lines, matches)]
 
     elif lang.lower() == "en":
         lines = [correct_grammar(line) for line in lines]
         matches = [tool_en.check(line) for line in lines]
-        lines = [language_tool_python.utils.correct(line, match) for line, match in zip(lines, matches)]
+        lines = [language_tool_python.utils.correct(line, match)
+                 for line, match in zip(lines, matches)]
 
     result = []
     for i, line in enumerate(lines):
