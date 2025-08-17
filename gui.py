@@ -37,11 +37,11 @@ def run_gui():
     polish_only = tk.BooleanVar(value=False)
 
     # Dropdown options
-    LANG_OPTIONS = ["pl", "en", "de", "fr", "es", "it"]
+    LANG_OPTIONS = ["pl", "en"]
     FILE_TYPES = ["ass", "srt", "txt"]
 
-    src_lang = tk.StringVar(value="pl")
-    tgt_lang = tk.StringVar(value="en")
+    src_lang = tk.StringVar(value="en")
+    tgt_lang = tk.StringVar(value="pl")
     file_type = tk.StringVar(value="ass")
 
     # File selection

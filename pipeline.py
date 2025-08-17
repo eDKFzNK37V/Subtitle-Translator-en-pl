@@ -1,7 +1,7 @@
 import language_tool_python
 from text_tools import restore_diacritics, correct_punctuation, correct_grammar, clean_translation
 from resources import tool_pl, tool_en
-from utils import load_subtitle_lines, correct_subtitle_lines
+from utils import load_subtitle_lines
 
 
 def correct_text(text, lang):
@@ -16,5 +16,3 @@ def correct_text(text, lang):
     text = correct_punctuation(text, "kredor")
     return clean_translation(text)
 
-original_lines = load_subtitle_lines(original_file_path)
-corrected_lines = correct_subtitle_lines(original_lines)
