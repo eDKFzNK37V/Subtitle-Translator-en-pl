@@ -24,12 +24,16 @@ def load_subtitle_lines(file_path):
     if ext in ["ass", "srt"]:
         enc = _detect_encoding(file_path)
         subs = pysubs2.load(file_path, encoding=enc)
-        return [event.text for event in subs], subs
+        # Only return non-empty subtitle texts (skip empty, sequence numbers, etc.)
+        texts = [event.text for event in subs if event.text.strip()]
+        return texts, subs
     elif ext == "txt":
         enc = _detect_encoding(file_path)
         with open(file_path, encoding=enc, errors="replace") as f:
             lines = f.readlines()
-        return lines, None
+        # Skip lines that are empty or look like sequence numbers (just digits)
+        filtered = [line for line in lines if line.strip() and not line.strip().isdigit()]
+        return filtered, None
     else:
         raise ValueError(f"Unsupported file format: .{ext}")
 
