@@ -1,4 +1,5 @@
 import tkinter as tk
+import time
 from tkinter import filedialog, messagebox, ttk
 import threading
 from subtitle_workflow import translate_subtitles
@@ -34,8 +35,16 @@ def run_gui():
 
     # Formatting preservation checkbox and preview button (only for .txt)
     formatting_checkbox = tk.Checkbutton(root, text="Preserve formatting for .txt", variable=preserve_formatting)
-    formatting_checkbox.grid(row=4, column=2, sticky="w")
+    formatting_checkbox.grid(row=5, column=0, sticky="w")
     formatting_checkbox.grid_remove()
+
+    translation_start_time = [0.0]
+    post_start_time = [0.0]
+    total_translation = [0]
+    total_post = [0]
+    def _format_time(seconds):
+        mins, secs = divmod(int(seconds), 60)
+        return f"{mins:02d}:{secs:02d}"
 
     def show_formatting_preview():
         if file_path.get():
@@ -44,7 +53,7 @@ def run_gui():
             messagebox.showinfo("Info", "Please select a .txt file first.")
 
     preview_btn = tk.Button(root, text="Preview Formatting", command=show_formatting_preview)
-    preview_btn.grid(row=4, column=3, sticky="w")
+    preview_btn.grid(row=5, column=1, sticky="w")
     preview_btn.grid_remove()
 
     def update_formatting_widgets(*args):
@@ -70,60 +79,73 @@ def run_gui():
         mode="determinate",
         maximum=100
     )
-    progress.grid(row=5, column=0, columnspan=3, pady=5)
+    progress.grid(row=6, column=0, columnspan=3, pady=5)
 
     translation_stage_label = tk.Label(root, text="Translation: waiting")
-    translation_stage_label.grid(row=6, column=0, columnspan=3)
+    translation_stage_label.grid(row=7, column=0, columnspan=3)
 
     post_stage_label = tk.Label(root, text="Post-processing: waiting")
-    post_stage_label.grid(row=7, column=0, columnspan=3)
+    post_stage_label.grid(row=8, column=0, columnspan=3)
 
     status_label = tk.Label(root, text="0%")
-    status_label.grid(row=9, column=0, columnspan=3)
+    status_label.grid(row=10, column=0, columnspan=3)
 
     # ——— UI Update Helpers ——————————————————————————————————————————
 
-    def _apply_translate_ui(overall, phase_pct, overall_pct):
+    def _apply_translate_ui(overall, phase_pct, overall_pct, current=0, total=0):
         translation_stage_label.config(text=f"Translation: {phase_pct}%")
         progress.config(value=overall)
-        status_label.config(text=f"{overall_pct}%")
+        if translation_start_time[0] is not None and current > 0:
+            elapsed = time.time() - translation_start_time[0]
+            avg_time = elapsed / current
+            remaining = total - current
+            est_remaining = avg_time * remaining
+            if total_post[0] > 0:
+                est_remaining += avg_time * total_post[0]
+            status_label.config(text=f"{overall_pct}% | Time remaining: {_format_time(est_remaining)}")
+        else:
+            status_label.config(text=f"{overall_pct}%")
         root.update_idletasks()
 
-    def _apply_post_ui(overall, phase_pct, overall_pct):
+    def _apply_post_ui(overall, phase_pct, overall_pct, current=0, total=0):
         post_stage_label.config(text=f"Post-processing: {phase_pct}%")
         progress.config(value=overall)
-        status_label.config(text=f"{overall_pct}%")
+        if post_start_time[0] != 0.0 and current > 0:
+            elapsed = time.time() - post_start_time[0]
+            avg_time = elapsed / current
+            remaining = total - current
+            est_remaining = avg_time * remaining
+            status_label.config(text=f"{overall_pct}% | Time remaining: {_format_time(est_remaining)}")
+        else:
+            status_label.config(text=f"{overall_pct}%")
         root.update_idletasks()
 
     # ——— Callbacks (run in worker thread) ——————————————————————————————
 
     def update_translation_progress(current, total):
-        # DEBUG: verify this prints during translation
         print(f"[DBG] translate called: {current}/{total}")
         if total <= 0:
             return
-
-        # translation occupies the first 50% of the bar
+        if translation_start_time[0] == 0.0:
+            translation_start_time[0] = time.time()
+            total_translation[0] = total
         overall = (current / total) * 50
         phase_pct = int((current / total) * 100)
         overall_pct = int(overall)
-
-        # marshal UI update onto main thread
-        root.after(0, _apply_translate_ui, overall, phase_pct, overall_pct)
+        root.after(0, _apply_translate_ui, overall, phase_pct, overall_pct, current, total)
 
     def update_post_progress(current, total):
-        # DEBUG: verify this prints during post-processing
-        print(f"[DBG] post called: {current}/{total}")
+        print('PING post-processing')
+        print(f"[DBG] post-processing called: {current}/{total}")
         if total <= 0:
             return
-
-        # post-processing occupies the last 50% of the bar
+        if post_start_time[0] == 0.0:
+            post_start_time[0] = time.time()
+            total_post[0] = total
         overall = 50 + (current / total) * 50
-        phase_pct = int(((overall - 50) / 50) * 100)
+        phase_pct = int((current / total) * 100)
         overall_pct = int(overall)
-
-        # marshal UI update onto main thread
-        root.after(0, _apply_post_ui, overall, phase_pct, overall_pct)
+        root.after(0, _apply_post_ui, overall, phase_pct, overall_pct, current, total)
 
     # ——— File Browser & UI Reset —————————————————————————————————————
     def show_txt_preserve_formatting_popup(txt_path):
@@ -194,7 +216,7 @@ def run_gui():
             if orig.strip() and not orig.strip().isdigit():
                 tk.Label(scrollable_frame, text=f"Line {i+1}:", anchor="w", width=8).grid(row=i, column=0, sticky="w")
                 tk.Label(scrollable_frame, text=orig.rstrip(), anchor="w", width=40, wraplength=350, fg="gray").grid(row=i, column=1, sticky="w")
-                entry = tk.Entry(scrollable_frame, width=120)
+                entry = tk.Entry(scrollable_frame, width=140)
                 entry.insert(0, trans.strip())
                 entry.grid(row=i, column=2, sticky="w")
                 entry_widgets.append((i, entry, orig))
@@ -236,32 +258,17 @@ def run_gui():
             return
 
         try:
+
+        
             def show_post_processing_start():
                 post_stage_label.config(text="Post-processing: 0%")
                 progress.config(value=50)
                 status_label.config(text="50%")
                 root.update_idletasks()
 
-            if file_type.get() == "txt" and preserve_formatting.get():
-                from utils import _detect_encoding
-                enc = _detect_encoding(path)
-                with open(path, encoding=enc, errors="replace") as f:
-                    original_lines = f.readlines()
-                to_translate = [line for line in original_lines if line.strip() and not line.strip().isdigit()]
-                from subtitle_workflow import translate_subtitles
-                # Translation stage
-                _, _, translated_lines = translate_subtitles(
-                    path,
-                    src_lang.get(),
-                    tgt_lang.get(),
-                    polish_only.get(),
-                    translation_callback=update_translation_progress,
-                    post_callback=None
-                )
-                # Immediately show post-processing start
-                root.after(0, show_post_processing_start)
-                # Post-processing stage
+            def threaded_postprocess_txt(original_lines, translated_lines, output_path):
                 from pipeline import correct_text_batch
+                # Post-processing stage (threaded)
                 corrected_lines = correct_text_batch(
                     translated_lines,
                     tgt_lang.get(),
@@ -283,10 +290,44 @@ def run_gui():
                         mapped_translations.append(new_line)
                     else:
                         mapped_translations.append(line)
+                # Show review popup in main thread
+                root.after(0, lambda: review_txt_translations(original_lines, mapped_translations, output_path))
+
+            def threaded_postprocess_sub(originals, translated_lines, output_path):
+                from pipeline import correct_text_batch
+                # Post-processing stage (threaded)
+                corrected_lines = correct_text_batch(
+                    translated_lines,
+                    tgt_lang.get(),
+                    progress_callback=update_post_progress
+                )
+                # Show review popup in main thread
+                root.after(0, lambda: review_translations(originals, corrected_lines, output_path))
+
+            if file_type.get() == "txt" and preserve_formatting.get():
+                from utils import _detect_encoding
+                enc = _detect_encoding(path)
+                with open(path, encoding=enc, errors="replace") as f:
+                    original_lines = f.readlines()
+                to_translate = [line for line in original_lines if line.strip() and not line.strip().isdigit()]
+                # Translation stage
+                _, _, translated_lines = translate_subtitles(
+                    path,
+                    src_lang.get(),
+                    tgt_lang.get(),
+                    polish_only.get(),
+                    translation_callback=update_translation_progress,
+                    post_callback=None
+                )
+                # Immediately show post-processing start
+                root.after(0, show_post_processing_start)
+                root.after(0, lambda: status_label.config(text="Preparing post-processing..."))
+                root.update_idletasks()
                 import os
                 ext = path.split('.')[-1].lower()
                 output_path = os.path.splitext(path)[0] + f"_{tgt_lang.get()}.{ext}"
-                review_txt_translations(original_lines, mapped_translations, output_path)
+                # Start post-processing in a thread
+                threading.Thread(target=threaded_postprocess_txt, args=(original_lines, translated_lines, output_path), daemon=True).start()
             else:
                 # Translation stage
                 output_path, originals, translated_lines = translate_subtitles(
@@ -299,15 +340,10 @@ def run_gui():
                 )
                 # Immediately show post-processing start
                 root.after(0, show_post_processing_start)
-                # Post-processing stage
-                from pipeline import correct_text_batch
-                corrected_lines = correct_text_batch(
-                    translated_lines,
-                    tgt_lang.get(),
-                    progress_callback=update_post_progress
-                )
-                # Show review popup before saving
-                review_translations(originals, corrected_lines, output_path)
+                root.after(0, lambda: status_label.config(text="Preparing post-processing..."))
+                root.update_idletasks()
+                # Start post-processing in a thread
+                threading.Thread(target=threaded_postprocess_sub, args=(originals, translated_lines, output_path), daemon=True).start()
         except Exception as e:
             on_translation_error(e)
 
@@ -385,9 +421,10 @@ def run_gui():
     # ——— Start Button & Mainloop ——————————————————————————————————————
 
     start_btn = tk.Button(root, text="Start Translation", command=start_translation_thread)
-    start_btn.grid(row=8, column=0, columnspan=3, pady=5)
+    start_btn.grid(row=9, column=0, columnspan=3, pady=5)
 
     root.mainloop()
+
 
 if __name__ == "__main__":
     run_gui()

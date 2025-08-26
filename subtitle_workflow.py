@@ -30,16 +30,19 @@ def translate_subtitles(file_path,
         progress_callback=translation_callback  # GUI: update_translation_progress
     )
     # --- Stage 2: correction/post-processing ---
+    print("[DBG] About to start post-processing")
     corrected_lines = correct_text_batch(
         translated,
         tgt_lang,
         progress_callback=post_callback         # GUI: update_post_progress
     )
+
     # Restore tags if there were any
     if tag_map:
         for i, corrected in enumerate(corrected_lines):
             corrected_lines[i] = restore_tags(corrected, tag_map[i])
-            subs[i].text = corrected_lines[i]
+            if subs is not None:
+                subs[i].text = corrected_lines[i]
 
     # Save to file
     ext = file_path.split('.')[-1].lower()

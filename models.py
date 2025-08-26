@@ -8,7 +8,8 @@ from config import DEVICE
 # Translation model loader
 def get_translation_model(model_name="facebook/m2m100_418M"):
     tokenizer = M2M100Tokenizer.from_pretrained(model_name)
-    model = M2M100ForConditionalGeneration.from_pretrained(model_name).to(DEVICE)
+    model = M2M100ForConditionalGeneration.from_pretrained(model_name)
+    model = model.to(DEVICE)  # type: ignore
     return model, tokenizer
 
 # Grammar correction model

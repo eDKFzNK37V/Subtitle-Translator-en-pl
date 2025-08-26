@@ -3,27 +3,6 @@ from functools import lru_cache
 import torch
 from config import DEVICE
 from models import PUNCT_MODELS, PUNCT_TOKENIZERS, GRAMMAR_MODEL, GRAMMAR_TOKENIZER
-from resources import DIACRITIC_DICT
-
-# for k, v in list(DIACRITIC_DICT.items())[:10]:
-#     print(f"Sample entry: {repr(k)} -> {repr(v)}")
-
-
-@lru_cache(maxsize=4096)
-def restore_diacritics(text: str) -> str:
-    restored_words = []
-    for w in text.split():
-        lw = w.lower()
-        if lw in DIACRITIC_DICT:
-            if w.isupper():
-                restored_words.append(DIACRITIC_DICT[lw].upper())
-            elif w.istitle():
-                restored_words.append(DIACRITIC_DICT[lw].capitalize())
-            else:
-                restored_words.append(DIACRITIC_DICT[lw])
-        else:
-            restored_words.append(w)
-    return " ".join(restored_words)
 
 def correct_punctuation(text, model_choice="kredor"):
     model = PUNCT_MODELS[model_choice]
@@ -77,8 +56,8 @@ def restore_tags(translated, tags):
 
 # Combined pipeline function
 def correct_text_pipeline(text, lang):
-    if lang.lower() == "pl":
-        text = restore_diacritics(text)
+    # if lang.lower() == "pl":
+    #     text = restore_diacritics(text)
     text = correct_grammar(text)
     text = correct_punctuation(text)
     return clean_translation(text)
