@@ -10,12 +10,14 @@ def get_translation_model(model_name="facebook/m2m100_418M"):
     tokenizer = M2M100Tokenizer.from_pretrained(model_name)
     model = M2M100ForConditionalGeneration.from_pretrained(model_name)
     model = model.to(DEVICE)  # type: ignore
+    model.eval()              # inference mode
     return model, tokenizer
-
 # Grammar correction model
 GRAMMAR_MODEL = AutoModelForSeq2SeqLM.from_pretrained(
     "prithivida/grammar_error_correcter_v1"
 ).to(DEVICE)
+GRAMMAR_MODEL.eval()
+
 GRAMMAR_TOKENIZER = AutoTokenizer.from_pretrained(
     "prithivida/grammar_error_correcter_v1"
 )
@@ -29,6 +31,9 @@ PUNCT_MODELS = {
         "oliverguhr/fullstop-punctuation-multilang-large"
     ).to(DEVICE),
 }
+for _m in PUNCT_MODELS.values():
+    _m.eval()
+
 PUNCT_TOKENIZERS = {
     "kredor": AutoTokenizer.from_pretrained("kredor/punctuate-all"),
     "oliverguhr": AutoTokenizer.from_pretrained(

@@ -18,6 +18,7 @@ class ProgressController:
         self.p_total = 0
         self.t_current = 0
         self.p_current = 0
+        self.post_start_time = 0.0
 
     def start(self, total_lines):
         # overall
@@ -36,6 +37,26 @@ class ProgressController:
         self.translation_label.config(text="Translation: 0%")
         self.post_label.config(text="Post-processing: waiting")
         self._update_ui(0, "Translation: 0% | ETA --:--")
+
+    def set_post_total(self, post_total):
+        """
+        Adjust the size of the post-processing phase after translation completes.
+        """
+        post_total = max(0, int(post_total))
+        self.p_total = post_total
+
+        # New total_steps = translation steps (t_total) + actual post steps (p_total)
+        self.total_steps = self.t_total + self.p_total
+
+        # Clamp done_steps if we’ve overshot
+        if self.done_steps > self.total_steps:
+            self.done_steps = self.total_steps
+
+        # Refresh the status line (you could also recalc ETA here)
+        pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
+        self._update_ui(int(pct), f"{int(pct)}% | Time remaining: --:--")
+        self.post_start_time = 0.0  # Reset post-processing timer
+
 
     def _step_ui(self, steps=1):
         if self.total_steps <= 0 or steps <= 0:
@@ -86,7 +107,22 @@ class ProgressController:
         self.p_current = current
 
         pct = int((current / total) * 100) if total else 0
-        self.post_label.config(text=f"Post-processing: {pct}%")
+
+        # Start post-processing timer on first update
+        if self.post_start_time == 0.0 and current > 0:
+            self.post_start_time = time.time()
+
+        # ETA calculation for post-processing only
+        if self.p_current > 0 and self.post_start_time > 0.0:
+            elapsed = time.time() - self.post_start_time
+            avg_per_step = elapsed / self.p_current
+            rem_secs = avg_per_step * (self.p_total - self.p_current)
+            mins, secs = divmod(int(rem_secs), 60)
+            eta_str = f"Time remaining: {mins:02d}:{secs:02d}"
+        else:
+            eta_str = "Time remaining: --:--"
+
+        self.post_label.config(text=f"Post-processing: {pct}% | {eta_str}")
 
         # advance overall by delta steps
         self._step_ui(delta)
@@ -94,12 +130,9 @@ class ProgressController:
     def show_post_start(self):
         # switch UI to phase 2 at 50% (no counter change here)
         pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
-        elapsed = time.time() - self.start_time
-        avg = (elapsed / self.done_steps) if self.done_steps else 0.0
-        rem_secs = avg * (self.total_steps - self.done_steps)
-        mins, secs = divmod(int(rem_secs), 60)
-        self.post_label.config(text="Post-processing: 0%")
-        self._update_ui(pct, f"Post-processing: 0% | Time remaining: {mins:02d}:{secs:02d}")
+        self.post_start_time = 0.0
+        self.post_label.config(text="Post-processing: 0% | Time remaining: --:--")
+        self._update_ui(pct, f"Post-processing: 0% | Time remaining: --:--")
 
     def reset_ui(self):
         self.progress_var.set(0)
@@ -117,6 +150,7 @@ class ProgressController:
         self.p_total = 0
         self.t_current = 0
         self.p_current = 0
+        self.post_start_time = 0.0
         self._update_ui(0, "0%")
 
     def _update_ui(self, pct, status):

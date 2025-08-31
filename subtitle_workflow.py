@@ -1,29 +1,25 @@
 # subtitle_workflow.py
 import os
 import torch
-from text_tools   import extract_tags, restore_tags
-from pipeline     import correct_text_batch
-from utils        import load_subtitle_lines, save_subtitle_lines
-from models       import get_translation_model
-from config       import DEVICE
+from utils import load_subtitle_lines, save_subtitle_lines
+from models import get_translation_model
+from config import DEVICE
+from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
 
 # Load model once
 TRANS_MODEL, TRANS_TOKENIZER = get_translation_model()
+TRANS_MODEL.eval()
 
-def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None):
-    originals, subs = load_subtitle_lines(file_path)
-    if subs is None:
-        subs = []
-
-    tag_map = []
-    if subs:
-        stripped = []
-        for ev in subs:
-            clean, tags = extract_tags(ev.text)
-            stripped.append(clean)
-            tag_map.append(tags)
-    else:
-        stripped = originals
+def translate_lines(lines, src_lang, tgt_lang, translation_callback=None):
+    """
+    Translate a list of strings, preserving tag positions via placeholders.
+    """
+    ph_maps = []
+    stripped = []
+    for line in lines:
+        clean, ph_map = extract_tags_with_placeholders(line)
+        stripped.append(clean)
+        ph_maps.append(ph_map)
 
     translated = translate_batch(
         stripped,
@@ -33,22 +29,55 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
         progress_callback=translation_callback
     )
 
-    # Restore tags
-    restored_lines = []
-    if tag_map:
-        for i, line in enumerate(translated):
-            restored = restore_tags(line, tag_map[i])
-            restored_lines.append(restored)
-            subs[i].text = restored
-    else:
-        restored_lines = translated
+    restored = []
+    for i, text in enumerate(translated):
+        restored.append(restore_tags_from_placeholders(text, ph_maps[i]))
+    return restored
 
-    # Save file
+def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None):
+    """
+    Load (texts, subs, idx_map), extract placeholders, apply glossary in pipeline,
+    translate unless polishing, restore placeholders, and save using idx_map.
+    """
+    texts, subs, idx_map = load_subtitle_lines(file_path)
+
+    if not texts:
+        raise ValueError(f"[translate_subtitles] No subtitle lines loaded from {file_path!r}")
+
+    stripped = []
+    ph_maps = []
+    from pipeline import apply_glossary
+
+    for line in texts:
+        clean, ph_map = extract_tags_with_placeholders(line)
+        clean = apply_glossary(clean)
+        stripped.append(clean)
+        ph_maps.append(ph_map)
+
+    # If polishing only and same language, skip model translate
+    if polish_only and src_lang.lower() == tgt_lang.lower():
+        translated = stripped[:]
+        if translation_callback:
+            for idx in range(1, len(translated) + 1):
+                translation_callback(idx, len(translated))
+    else:
+        translated = translate_batch(
+            stripped,
+            src_lang,
+            tgt_lang,
+            batch_size=8,
+            progress_callback=translation_callback
+        )
+
+    restored_lines = [
+        restore_tags_from_placeholders(translated[i], ph_maps[i]) for i in range(len(translated))
+    ]
+
     ext = file_path.split('.')[-1].lower()
     output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
-    save_subtitle_lines(restored_lines, output_path, subs)
+    save_subtitle_lines(restored_lines, output_path, subs, idx_map)
 
-    return output_path, originals, restored_lines
+    return output_path, texts, restored_lines
 
 def translate_batch(lines, src_lang, tgt_lang, batch_size=8, progress_callback=None):
     translated = []
@@ -58,7 +87,7 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=8, progress_callback=N
     bos_token_id = lambda lang: TRANS_TOKENIZER.get_lang_id(lang)
 
     for i in range(0, total_lines, batch_size):
-        batch = lines[i : i + batch_size]
+        batch = lines[i: i + batch_size]
         encoded = TRANS_TOKENIZER(
             batch,
             return_tensors="pt",
@@ -75,7 +104,6 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=8, progress_callback=N
 
         decoded = TRANS_TOKENIZER.batch_decode(outputs, skip_special_tokens=True)
 
-        # Emit per-line callbacks
         for idx, text in enumerate(decoded):
             translated.append(text)
             if progress_callback:
