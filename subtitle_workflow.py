@@ -2,13 +2,14 @@
 import os
 import torch
 from utils import load_subtitle_lines, save_subtitle_lines
-from models import get_translation_model
+from models import get_m2m100_model, get_nllb_model # changed here
 from config import DEVICE
 from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
 
 # Load model once
-TRANS_MODEL, TRANS_TOKENIZER = get_translation_model()
+TRANS_MODEL, TRANS_TOKENIZER = get_m2m100_model()  # changed here
 TRANS_MODEL.eval()
+
 
 def translate_lines(lines, src_lang, tgt_lang, translation_callback=None):
     """
