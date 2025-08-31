@@ -1,26 +1,58 @@
+# problem_gui.py
+import sys
+import traceback
+import logging
 import tkinter as tk
-import time
 from tkinter import filedialog, messagebox, ttk
 import threading
-from subtitle_workflow import translate_subtitles
+import os
+
+from logs import SubtitleLogger
+from utils import load_subtitle_lines, save_subtitle_lines
+from pipeline import correct_text_batch, translate_with_context
+from progress_controller import ProgressController
+from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
+
+logging.basicConfig(filename="error.log", level=logging.ERROR)
+
+
+def handle_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    tb_str = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    detailed_message = (
+        f"\n[ERROR] {exc_type.__name__}: {exc_value}\n"
+        f"Traceback:\n{tb_str}"
+    )
+    logging.error(detailed_message)
+    messagebox.showerror(
+        "Unexpected Error",
+        f"{exc_type.__name__}: {exc_value}\n\n"
+        "See error.log for full details."
+    )
+
+
+sys.excepthook = handle_exception
+
 
 def run_gui():
     root = tk.Tk()
     root.title("Subtitle Translator")
 
-    # Variables
+    # ─── Variables ───────────────────────────────────────────────────────────────
     file_path = tk.StringVar()
     polish_only = tk.BooleanVar(value=False)
-    LANG_OPTIONS = ["pl", "en"]
-    FILE_TYPES = ["ass", "srt", "txt"]
     preserve_formatting = tk.BooleanVar(value=True)
+    LANG_OPTIONS = ["pl", "en", "ja", "fr", "de"]
+    FILE_TYPES = ["ass", "srt", "txt"]
     src_lang = tk.StringVar(value="en")
     tgt_lang = tk.StringVar(value="pl")
-    file_type = tk.StringVar(value="ass")
+    file_type = tk.StringVar(value="ass")  # Default to .ass on startup
 
-    # Layout
+    # ─── Layout ──────────────────────────────────────────────────────────────────
     tk.Label(root, text="Subtitle File:").grid(row=0, column=0, sticky="w")
-    tk.Entry(root, textvariable=file_path, width=40).grid(row=0, column=1)
+    tk.Entry(root, textvariable=file_path, width=40).grid(row=0, column=1, padx=5)
     tk.Button(root, text="Browse", command=lambda: browse_file()).grid(row=0, column=2)
 
     tk.Label(root, text="Source Language:").grid(row=1, column=0, sticky="w")
@@ -30,147 +62,63 @@ def run_gui():
     tk.OptionMenu(root, tgt_lang, *LANG_OPTIONS).grid(row=2, column=1, sticky="w")
 
     tk.Label(root, text="File Type:").grid(row=3, column=0, sticky="w")
-    file_type_menu = tk.OptionMenu(root, file_type, *FILE_TYPES)
-    file_type_menu.grid(row=3, column=1, sticky="w")
+    tk.OptionMenu(root, file_type, *FILE_TYPES).grid(row=3, column=1, sticky="w")
 
-    # Formatting preservation checkbox and preview button (only for .txt)
-    formatting_checkbox = tk.Checkbutton(root, text="Preserve formatting for .txt", variable=preserve_formatting)
-    formatting_checkbox.grid(row=5, column=0, sticky="w")
-    formatting_checkbox.grid_remove()
+    tk.Checkbutton(root, text="Polish Only", variable=polish_only).grid(row=4, column=1, sticky="w")
 
-    translation_start_time = [0.0]
-    post_start_time = [0.0]
-    total_translation = [0]
-    total_post = [0]
-    def _format_time(seconds):
-        mins, secs = divmod(int(seconds), 60)
-        return f"{mins:02d}:{secs:02d}"
-
-    def show_formatting_preview():
-        if file_path.get():
-            show_txt_preserve_formatting_popup(file_path.get())
-        else:
-            messagebox.showinfo("Info", "Please select a .txt file first.")
-
-    preview_btn = tk.Button(root, text="Preview Formatting", command=show_formatting_preview)
+    formatting_cb = tk.Checkbutton(
+        root,
+        text="Preserve formatting for .txt",
+        variable=preserve_formatting
+    )
+    preview_btn = tk.Button(
+        root,
+        text="Preview Formatting",
+        command=lambda: show_txt_preserve_formatting_popup(file_path.get())
+    )
+    formatting_cb.grid(row=5, column=0, sticky="w")
     preview_btn.grid(row=5, column=1, sticky="w")
-    preview_btn.grid_remove()
 
     def update_formatting_widgets(*args):
         if file_type.get() == "txt":
-            formatting_checkbox.grid()
+            formatting_cb.grid()
             preview_btn.grid()
         else:
-            formatting_checkbox.grid_remove()
+            formatting_cb.grid_remove()
             preview_btn.grid_remove()
 
-    file_type.trace_add('write', update_formatting_widgets)
+    file_type.trace_add("write", update_formatting_widgets)
     update_formatting_widgets()
 
-    tk.Label(root, text="Polish Only:").grid(row=4, column=0, sticky="w")
-    tk.Checkbutton(root, variable=polish_only).grid(row=4, column=1, sticky="w")
-
-
-
-    progress = ttk.Progressbar(
+    # ─── Progress & Status ────────────────────────────────────────────────────────
+    progress_var = tk.DoubleVar(value=0)
+    ttk.Progressbar(
         root,
         orient="horizontal",
-        length=300,
+        length=400,
         mode="determinate",
-        maximum=100
-    )
-    progress.grid(row=6, column=0, columnspan=3, pady=5)
-
-    translation_stage_label = tk.Label(root, text="Translation: waiting")
-    translation_stage_label.grid(row=7, column=0, columnspan=3)
-
-    post_stage_label = tk.Label(root, text="Post-processing: waiting")
-    post_stage_label.grid(row=8, column=0, columnspan=3)
+        maximum=100,
+        variable=progress_var
+    ).grid(row=6, column=0, columnspan=3, pady=10)
 
     status_label = tk.Label(root, text="0%")
-    status_label.grid(row=10, column=0, columnspan=3)
+    status_label.grid(row=7, column=0, columnspan=3)
 
-    # ——— UI Update Helpers ——————————————————————————————————————————
+    translation_label = tk.Label(root, text="Translation: waiting")
+    translation_label.grid(row=8, column=0, columnspan=3)
 
-    def _apply_translate_ui(overall, phase_pct, overall_pct, current=0, total=0):
-        translation_stage_label.config(text=f"Translation: {phase_pct}%")
-        progress.config(value=overall)
-        if translation_start_time[0] is not None and current > 0:
-            elapsed = time.time() - translation_start_time[0]
-            avg_time = elapsed / current
-            remaining = total - current
-            est_remaining = avg_time * remaining
-            if total_post[0] > 0:
-                est_remaining += avg_time * total_post[0]
-            status_label.config(text=f"{overall_pct}% | Time remaining: {_format_time(est_remaining)}")
-        else:
-            status_label.config(text=f"{overall_pct}%")
-        root.update_idletasks()
+    post_label = tk.Label(root, text="Post-processing: waiting")
+    post_label.grid(row=9, column=0, columnspan=3)
 
-    def _apply_post_ui(overall, phase_pct, overall_pct, current=0, total=0):
-        post_stage_label.config(text=f"Post-processing: {phase_pct}%")
-        progress.config(value=overall)
-        if post_start_time[0] != 0.0 and current > 0:
-            elapsed = time.time() - post_start_time[0]
-            avg_time = elapsed / current
-            remaining = total - current
-            est_remaining = avg_time * remaining
-            status_label.config(text=f"{overall_pct}% | Time remaining: {_format_time(est_remaining)}")
-        else:
-            status_label.config(text=f"{overall_pct}%")
-        root.update_idletasks()
+    controller = ProgressController(
+        root,
+        progress_var,
+        translation_label,
+        post_label,
+        status_label
+    )
 
-    # ——— Callbacks (run in worker thread) ——————————————————————————————
-
-    def update_translation_progress(current, total):
-        print(f"[DBG] translate called: {current}/{total}")
-        if total <= 0:
-            return
-        if translation_start_time[0] == 0.0:
-            translation_start_time[0] = time.time()
-            total_translation[0] = total
-        overall = (current / total) * 50
-        phase_pct = int((current / total) * 100)
-        overall_pct = int(overall)
-        root.after(0, _apply_translate_ui, overall, phase_pct, overall_pct, current, total)
-
-    def update_post_progress(current, total):
-        print('PING post-processing')
-        print(f"[DBG] post-processing called: {current}/{total}")
-        if total <= 0:
-            return
-        if post_start_time[0] == 0.0:
-            post_start_time[0] = time.time()
-            total_post[0] = total
-        overall = 50 + (current / total) * 50
-        phase_pct = int((current / total) * 100)
-        overall_pct = int(overall)
-        root.after(0, _apply_post_ui, overall, phase_pct, overall_pct, current, total)
-
-    # ——— File Browser & UI Reset —————————————————————————————————————
-    def show_txt_preserve_formatting_popup(txt_path):
-        #Read the file and show a preview with option to preserve formatting
-        preview_win = tk.Toplevel(root)
-        preview_win.title("TXT Formatting Preview & Options")
-        preview_win.geometry("800x600")
-
-        with open(txt_path, encoding="utf-8", errors="replace") as f:
-            lines = f.readlines()
-
-        text_widget = tk.Text(preview_win, wrap="word", font=("Courier", 10))
-        text_widget.pack(fill=tk.BOTH, expand=True)
-        text_widget.insert("1.0", "".join(lines))
-        # text_widget.config(state="disabled")
-
-        info = tk.Label(preview_win, text="Formatting will be preserved. Only non-empty, non-formatting lines will be translated.", fg="blue")
-        info.pack(pady=5)
-
-        def close_preview():
-            preview_win.destroy()
-
-        close_btn = tk.Button(preview_win, text="OK", command=close_preview)
-        close_btn.pack(pady=10)
-
+    # ─── File Browse & Formatting Preview ────────────────────────────────────────
     def browse_file():
         ext = file_type.get()
         chosen = filedialog.askopenfilename(
@@ -178,250 +126,297 @@ def run_gui():
         )
         if chosen:
             file_path.set(chosen)
-            # #if ext == "txt":
-            #     show_txt_preserve_formatting_popup(chosen)
 
+    def show_txt_preserve_formatting_popup(txt_path):
+        if not txt_path:
+            messagebox.showinfo("Info", "Please select a .txt file first.")
+            return
+        preview = tk.Toplevel(root)
+        preview.title("TXT Formatting Preview")
+        preview.geometry("800x600")
+        with open(txt_path, encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        text = tk.Text(preview, wrap="word", font=("Courier", 10))
+        text.insert("1.0", content)
+        text.pack(fill=tk.BOTH, expand=True)
+        tk.Label(
+            preview,
+            text="Formatting preserved. Only non-empty, non-numeric lines will be translated.",
+            fg="blue"
+        ).pack(pady=5)
+        tk.Button(preview, text="OK", command=preview.destroy).pack(pady=10)
 
+    # ─── Review Dialogs ─────────────────────────────────────────────────────────
+    def review_txt_translations(orig_nonempty, trans, out_path, log_path):
+        fresh_orig, _, _ = load_subtitle_lines(file_path.get())
 
-    # Update review_translations for .txt to preserve formatting
-    def review_txt_translations(original_lines, translated_lines, output_path):
-        # Show a popup with original and translated lines, preserving formatting
-        review_win = tk.Toplevel(root)
-        review_win.title("Review TXT Translation (Formatting Preserved)")
-        review_win.geometry("900x600")
-
-        frame = tk.Frame(review_win)
+        review = tk.Toplevel(root)
+        review.title("Review TXT Translation")
+        review.geometry("900x600")
+        review.protocol("WM_DELETE_WINDOW", lambda: (review.destroy(), on_translation_error("Canceled")))
+        frame = tk.Frame(review)
         frame.pack(fill=tk.BOTH, expand=True)
-
         canvas = tk.Canvas(frame)
         scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas)
-
-        scrollable_frame.bind(
+        scrollable = tk.Frame(canvas)
+        scrollable.bind(
             "<Configure>",
-            lambda e: canvas.configure(
-                scrollregion=canvas.bbox("all")
-            )
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.create_window((0, 0), window=scrollable, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
-
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
-        entry_widgets = []
-        for i, (orig, trans) in enumerate(zip(original_lines, translated_lines)):
-            # Only allow editing for lines that were translated (non-formatting)
-            if orig.strip() and not orig.strip().isdigit():
-                tk.Label(scrollable_frame, text=f"Line {i+1}:", anchor="w", width=8).grid(row=i, column=0, sticky="w")
-                tk.Label(scrollable_frame, text=orig.rstrip(), anchor="w", width=40, wraplength=350, fg="gray").grid(row=i, column=1, sticky="w")
-                entry = tk.Entry(scrollable_frame, width=140)
-                entry.insert(0, trans.strip())
-                entry.grid(row=i, column=2, sticky="w")
-                entry_widgets.append((i, entry, orig))
-            else:
-                # Show formatting/blank lines as non-editable
-                tk.Label(scrollable_frame, text=orig.rstrip(), anchor="w", width=120, fg="black").grid(row=i, column=0, columnspan=3, sticky="w")
+        entries = []
+        count = min(len(fresh_orig), len(trans))
+        for idx in range(count):
+            o = fresh_orig[idx]
+            t = trans[idx]
+            tk.Label(scrollable, text=f"Line {idx+1}:", width=8, anchor="w").grid(row=idx, column=0, sticky="w")
+            tk.Label(
+                scrollable,
+                text=o.rstrip(),
+                width=40,
+                anchor="w",
+                wraplength=350,
+                fg="gray"
+            ).grid(row=idx, column=1, sticky="w")
+            ent = tk.Entry(scrollable, width=140)
+            ent.insert(0, t.strip())
+            ent.grid(row=idx, column=2, sticky="w")
+            entries.append(ent)
 
         def approve_and_save():
-            # Reconstruct the file, replacing only translated lines
-            new_lines = list(original_lines)
-            for idx, entry, orig in entry_widgets:
-                leading = len(orig) - len(orig.lstrip(' '))
-                trailing = len(orig) - len(orig.rstrip(' '))
-                has_newline = orig.endswith('\n')
-                new_line = (' ' * leading) + entry.get() + (' ' * trailing) + ('\n' if has_newline else '')
-                new_lines[idx] = new_line
-            with open(output_path, "w", encoding="utf-8-sig") as f:
-                f.writelines(new_lines)
-            review_win.destroy()
-            on_translation_success(output_path)
-            root.after(0, reset_ui)
+            try:
+                edited = [e.get() for e in entries]
+                restored = [
+                    restore_tags_from_placeholders(edited[i], placeholder_maps[i])
+                    for i in range(len(edited))
+                ]
+                save_subtitle_lines(restored, out_path, None, idx_map)
+                review.destroy()
+                on_translation_success(out_path, log_path)
+            except Exception as e:
+                logging.exception("[review_txt] Save failed")
+                on_translation_error(e)
 
-        approve_btn = tk.Button(review_win, text="Approve and Save", command=approve_and_save)
-        approve_btn.pack(pady=10)
+        tk.Button(review, text="Approve and Save", command=approve_and_save).pack(pady=10)
 
-    def reset_ui():
-        start_btn.config(state="normal")
-        progress.config(value=0, mode="determinate")
-        translation_stage_label.config(text="Translation: waiting")
-        post_stage_label.config(text="Post-processing: waiting")
-        status_label.config(text="0%")
+    def review_sub_translations(orig_nonempty, trans, out_path, log_path):
+        fresh_orig, _, _ = load_subtitle_lines(file_path.get())
 
-    # ——— Main Translation Flow ————————————————————————————————————————
+        review = tk.Toplevel(root)
+        review.title("Review Translations")
+        review.geometry("900x600")
+        review.protocol("WM_DELETE_WINDOW", lambda: (review.destroy(), on_translation_error("Canceled")))
+        frame = tk.Frame(review)
+        frame.pack(fill=tk.BOTH, expand=True)
+        canvas = tk.Canvas(frame)
+        scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable = tk.Frame(canvas)
+        scrollable.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=scrollable, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
 
+        entries = []
+        count = min(len(fresh_orig), len(trans))
+        for i in range(count):
+            o = fresh_orig[i]
+            t = trans[i]
+            tk.Label(scrollable, text=f"Line {i+1}:", width=12, anchor="w").grid(row=i, column=0, sticky="w")
+            tk.Label(
+                scrollable,
+                text=o.strip(),
+                width=40,
+                anchor="w",
+                wraplength=350,
+                fg="gray"
+            ).grid(row=i, column=1, sticky="w")
+            ent = tk.Entry(scrollable, width=120)
+            ent.insert(0, t.strip())
+            ent.grid(row=i, column=2, sticky="w")
+            entries.append(ent)
+
+        def approve_and_save():
+            try:
+                edited = [e.get() for e in entries]
+                restored = [
+                    restore_tags_from_placeholders(edited[i], placeholder_maps[i])
+                    for i in range(len(edited))
+                ]
+                save_subtitle_lines(restored, out_path, subs, idx_map)
+                review.destroy()
+                on_translation_success(out_path, log_path)
+            except Exception as e:
+                logging.exception("[review_subs] Save failed")
+                on_translation_error(e)
+
+        tk.Button(review, text="Approve and Save", command=approve_and_save).pack(pady=10)
+
+    # ─── Main Translation Flow ──────────────────────────────────────────────────
     def start_translation():
         path = file_path.get()
         if not (path and src_lang.get() and tgt_lang.get()):
             messagebox.showerror("Error", "Please fill all fields.")
             return
 
+        texts, subs_loaded, idx_map_loaded = load_subtitle_lines(path)
+        if not texts:
+            messagebox.showerror("Error", "No subtitle lines found.")
+            return
+
+        nonlocal subs, idx_map, originals, pristine_originals, output_path, translated, placeholder_maps
+        subs = subs_loaded
+        idx_map = idx_map_loaded
+        originals = texts[:]
+        pristine_originals = texts[:]
+
+        placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in texts]
+
+        total_lines = len(texts)
+        controller.start(total_lines)
+
         try:
-
-        
-            def show_post_processing_start():
-                post_stage_label.config(text="Post-processing: 0%")
-                progress.config(value=50)
-                status_label.config(text="50%")
-                root.update_idletasks()
-
-            def threaded_postprocess_txt(original_lines, translated_lines, output_path):
-                from pipeline import correct_text_batch
-                # Post-processing stage (threaded)
-                corrected_lines = correct_text_batch(
-                    translated_lines,
-                    tgt_lang.get(),
-                    progress_callback=update_post_progress
-                )
-                # Map translations back to original structure, preserving all whitespace
-                translated_iter = iter(corrected_lines)
-                mapped_translations = []
-                for line in original_lines:
-                    if line.strip() and not line.strip().isdigit():
-                        try:
-                            translated = next(translated_iter)
-                        except StopIteration:
-                            translated = line.rstrip('\n')
-                        leading = len(line) - len(line.lstrip(' '))
-                        trailing = len(line) - len(line.rstrip(' '))
-                        has_newline = line.endswith('\n')
-                        new_line = (' ' * leading) + translated + (' ' * trailing) + ('\n' if has_newline else '')
-                        mapped_translations.append(new_line)
-                    else:
-                        mapped_translations.append(line)
-                # Show review popup in main thread
-                root.after(0, lambda: review_txt_translations(original_lines, mapped_translations, output_path))
-
-            def threaded_postprocess_sub(originals, translated_lines, output_path):
-                from pipeline import correct_text_batch
-                # Post-processing stage (threaded)
-                corrected_lines = correct_text_batch(
-                    translated_lines,
-                    tgt_lang.get(),
-                    progress_callback=update_post_progress
-                )
-                # Show review popup in main thread
-                root.after(0, lambda: review_translations(originals, corrected_lines, output_path))
-
-            if file_type.get() == "txt" and preserve_formatting.get():
-                from utils import _detect_encoding
-                enc = _detect_encoding(path)
-                with open(path, encoding=enc, errors="replace") as f:
-                    original_lines = f.readlines()
-                to_translate = [line for line in original_lines if line.strip() and not line.strip().isdigit()]
-                # Translation stage
-                _, _, translated_lines = translate_subtitles(
-                    path,
-                    src_lang.get(),
-                    tgt_lang.get(),
-                    polish_only.get(),
-                    translation_callback=update_translation_progress,
-                    post_callback=None
-                )
-                # Immediately show post-processing start
-                root.after(0, show_post_processing_start)
-                root.after(0, lambda: status_label.config(text="Preparing post-processing..."))
-                root.update_idletasks()
-                import os
-                ext = path.split('.')[-1].lower()
-                output_path = os.path.splitext(path)[0] + f"_{tgt_lang.get()}.{ext}"
-                # Start post-processing in a thread
-                threading.Thread(target=threaded_postprocess_txt, args=(original_lines, translated_lines, output_path), daemon=True).start()
-            else:
-                # Translation stage
-                output_path, originals, translated_lines = translate_subtitles(
-                    path,
-                    src_lang.get(),
-                    tgt_lang.get(),
-                    polish_only.get(),
-                    translation_callback=update_translation_progress,
-                    post_callback=None
-                )
-                # Immediately show post-processing start
-                root.after(0, show_post_processing_start)
-                root.after(0, lambda: status_label.config(text="Preparing post-processing..."))
-                root.update_idletasks()
-                # Start post-processing in a thread
-                threading.Thread(target=threaded_postprocess_sub, args=(originals, translated_lines, output_path), daemon=True).start()
-        except Exception as e:
-            on_translation_error(e)
-
-    def review_translations(originals, translations, output_path):
-        review_win = tk.Toplevel(root)
-        review_win.title("Review Translations")
-        review_win.geometry("900x600")
-
-        frame = tk.Frame(review_win)
-        frame.pack(fill=tk.BOTH, expand=True)
-
-        canvas = tk.Canvas(frame)
-        scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas)
-
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(
-                scrollregion=canvas.bbox("all")
+            translated = translate_with_context(
+                texts,
+                src_lang.get(),
+                tgt_lang.get(),
+                polish_only.get(),
+                translation_callback=controller.update_translation_progress
             )
-        )
+            base, ext = os.path.splitext(path)
+            tgt = tgt_lang.get()
+            output_path = f"{base}_{tgt}{ext}"
+            save_subtitle_lines(translated, output_path, subs, idx_map)
+        except Exception as e:
+            logging.exception("[translate] Failed")
+            on_translation_error(e)
+            return
 
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        controller.set_post_total(len(translated))
 
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        try:
+            warmup_sentence = (
+                "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
+                else "This is a test sentence."
+            )
+            correct_text_batch([warmup_sentence], tgt_lang.get())
+        except Exception as warm_err:
+            logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
 
-        entry_widgets = []
-        for i, (orig, trans) in enumerate(zip(originals, translations)):
-            tk.Label(scrollable_frame, text=f"Line {i+1}:", anchor="w", width=8).grid(row=i, column=0, sticky="w")
-            tk.Label(scrollable_frame, text=orig.strip(), anchor="w", width=40, wraplength=350, fg="gray").grid(row=i, column=1, sticky="w")
-            entry = tk.Entry(scrollable_frame, width=120)
-            entry.insert(0, trans.strip())
-            entry.grid(row=i, column=2, sticky="w")
-            entry_widgets.append(entry)
+        root.after(0, controller.show_post_start)
 
-        def approve_and_save():
-            # Collect possibly edited translations
-            edited = [e.get() for e in entry_widgets]
-            # Save using utils.save_subtitle_lines
-            from utils import save_subtitle_lines, load_subtitle_lines
-            _, subs = load_subtitle_lines(file_path.get())
-            save_subtitle_lines(edited, output_path, subs)
-            review_win.destroy()
-            on_translation_success(output_path)
-            # Reset UI after review and save
-            root.after(0, reset_ui)
+        def do_post():
+            try:
+                logger = SubtitleLogger(file_path.get(), tgt_lang.get(), idx_map=idx_map)
+                total = len(translated)
+                corrected_all = []
 
-        approve_btn = tk.Button(review_win, text="Approve and Save", command=approve_and_save)
-        approve_btn.pack(pady=10)
+                root.after(0, lambda: controller.update_post_progress(1, total))
+                root.after(0, lambda: controller.post_label.config(text="Post-processing: starting…"))
+
+                stop_flag = {"stop": False}
+                def heartbeat():
+                    if not stop_flag["stop"]:
+                        controller.update_post_progress(controller.p_current, total)
+                        root.after(500, heartbeat)
+                root.after(0, heartbeat)
+
+                warmup_size = min(1, total)
+                if warmup_size:
+                    try:
+                        batch = translated[:warmup_size]
+                        cb = correct_text_batch(
+                            batch, tgt_lang.get(),
+                            progress_callback=lambda done, _: controller.update_post_progress(done, total)
+                        )
+                        corrected_all.extend(cb or [])
+                    except Exception as e:
+                        logging.exception(f"[do_post] Warm-up batch failed: {e}")
+
+                batch_size = 8
+                for start in range(warmup_size, total, batch_size):
+                    end = min(start + batch_size, total)
+                    batch = translated[start:end]
+                    try:
+                        cb = correct_text_batch(
+                            batch, tgt_lang.get(),
+                            progress_callback=lambda done, _, offset=start: controller.update_post_progress(done + offset, total)
+                        )
+                        corrected_all.extend(cb or [])
+                    except Exception as e:
+                        logging.exception(f"[do_post] Error in batch {start}-{end}: {e}")
+                        # Skip this batch but continue
+                        corrected_all.extend(batch)  # keep alignment by falling back to untranslated batch
+
+                if len(corrected_all) < total:
+                    corrected_all.extend(translated[len(corrected_all):total])
+
+                stop_flag["stop"] = True
+                root.after(0, lambda: controller.update_post_progress(total, total))
+
+                for idx, (orig, trans, corr) in enumerate(zip(originals, translated, corrected_all)):
+                    try:
+                        logger.log_entry(idx, orig, trans, corr, tags_before=[], tags_after=[])
+                    except Exception:
+                        logging.exception(f"[do_post] Logging failed on line {idx+1}")
+                try:
+                    logger.write_summary()
+                except Exception:
+                    logging.exception("[do_post] Failed writing summary")
+
+                log_path = logger.get_log_path() if hasattr(logger, "get_log_path") else logger.log_txt
+                review_fn = review_txt_translations if file_type.get() == "txt" else review_sub_translations
+                root.after(0, review_fn, pristine_originals, corrected_all, output_path, log_path)
+
+            except Exception as e:
+                logging.exception(f"[do_post] Unhandled exception: {e}")
+                on_translation_error(e)
+        threading.Thread(target=do_post, daemon=True).start()
+
+    subs = None
+    idx_map = []
+    originals = []
+    pristine_originals = []
+    translated = []
+    output_path = ""
+    placeholder_maps = []
 
     def run_and_reset():
         try:
             start_translation()
         finally:
-            # ensure UI always resets (even on exception)
-            root.after(0, reset_ui)
+            pass
 
     def start_translation_thread():
+        if not (file_path.get() and src_lang.get() and tgt_lang.get()):
+            messagebox.showerror("Error", "Please fill all fields.")
+            return
         start_btn.config(state="disabled")
         status_label.config(text="Starting translation…")
         threading.Thread(target=run_and_reset, daemon=True).start()
 
-    def on_translation_success(output_path):
-        progress.config(value=100)
-        status_label.config(text="100%")
-        messagebox.showinfo("Success", f"Translated file saved to:\n{output_path}")
+    def on_translation_success(out_path: str, log_path: str | None = None):
+        start_btn.config(state="normal")
+        controller.reset()
+        messagebox.showinfo("Success", f"Translated file saved to:\n{out_path}")
+        if log_path:
+            messagebox.showinfo("Success", f"Log file saved to:\n{log_path}")
 
     def on_translation_error(err):
-        progress.config(value=0)
+        start_btn.config(state="normal")
         status_label.config(text="Error")
         messagebox.showerror("Translation Failed", str(err))
-
-    # ——— Start Button & Mainloop ——————————————————————————————————————
+        controller.reset()
 
     start_btn = tk.Button(root, text="Start Translation", command=start_translation_thread)
-    start_btn.grid(row=9, column=0, columnspan=3, pady=5)
+    start_btn.grid(row=10, column=0, columnspan=3, pady=10)
 
     root.mainloop()
 

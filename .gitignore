@@ -1,2 +1,14 @@
 __pycache__/
 subtitle-env/
+config.txt
+CUDA-TEST.txt
+gui.txt
+logs.txt
+main.txt
+pipeline.txt
+models.txt
+utils.txt
+progress_controller.txt
+resources.txt
+subtitle_workflow.txt
+text_tools.txt
