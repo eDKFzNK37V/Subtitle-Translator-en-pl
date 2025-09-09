@@ -7,7 +7,7 @@ import threading
 import os
 from logs import SubtitleLogger
 from utils import load_subtitle_lines, save_subtitle_lines
-from pipeline import correct_text_batch, translate_with_context
+from advanced_translation import correct_text_batch_nllb, translate_with_context_nllb
 from progress_controller import ProgressController
 from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
 
@@ -262,7 +262,7 @@ def run_gui_nllb():
         controller.start(total_lines)
 
         try:
-            translated = translate_with_context(
+            translated = translate_with_context_nllb(
                 texts,
                 src_lang.get(),
                 tgt_lang.get(),
@@ -285,7 +285,7 @@ def run_gui_nllb():
                 "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
                 else "This is a test sentence."
             )
-            correct_text_batch([warmup_sentence], tgt_lang.get())
+            correct_text_batch_nllb([warmup_sentence], tgt_lang.get())
         except Exception as warm_err:
             logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
 
@@ -311,7 +311,7 @@ def run_gui_nllb():
                 if warmup_size:
                     try:
                         batch = translated[:warmup_size]
-                        cb = correct_text_batch(
+                        cb = correct_text_batch_nllb(
                             batch, tgt_lang.get(),
                             progress_callback=lambda done, _: controller.update_post_progress(done, total)
                         )
@@ -324,7 +324,7 @@ def run_gui_nllb():
                     end = min(start + batch_size, total)
                     batch = translated[start:end]
                     try:
-                        cb = correct_text_batch(
+                        cb = correct_text_batch_nllb(
                             batch, tgt_lang.get(),
                             progress_callback=lambda done, _, offset=start: controller.update_post_progress(done + offset, total)
                         )

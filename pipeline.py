@@ -3,6 +3,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import language_tool_python
+from advanced_translation import translate_lines_nllb
 from resources import tool_pl, tool_en
 from text_tools import (
     correct_punctuation,
@@ -226,3 +227,4 @@ def translate_with_context(lines, src_lang, tgt_lang, polish_only=False, transla
                 translation_callback(i, total)
 
     return result
+

@@ -1,6 +1,8 @@
 # advanced.translation.py
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
+from pipeline import apply_glossary
 
 # Minimal UI→NLLB language code map (extend as needed)
 NLLB_LANG = {
@@ -62,3 +64,75 @@ def translate_lines_nllb(model, tok, device, lines, src, tgt,
                 # last resort: process one line
                 continue
     return out
+
+def translate_with_context_nllb(
+    lines,
+    src_lang,
+    tgt_lang,
+    model,
+    tokenizer,
+    device,
+    beams=6,
+    batch_size=16,
+    polish_only=False,
+    translation_callback=None
+):
+    """
+    Translate lines with small context windows using NLLB.
+    - Preserves order and length.
+    - Applies glossary pre-translation.
+    - Respects polish_only flag.
+    """
+
+    total = len(lines)
+    result = []
+    overlap = 2
+
+    # No translation if polishing only and langs match
+    if polish_only and src_lang.lower() == tgt_lang.lower():
+        out = []
+        for line in lines:
+            clean, ph_map = extract_tags_with_placeholders(line)
+            clean = apply_glossary(clean)
+            out.append(restore_tags_from_placeholders(clean, ph_map))
+        if translation_callback:
+            for i in range(1, total + 1):
+                translation_callback(i, total)
+        return out
+
+    # Pre-extract tags/placeholders for all lines
+    clean_lines = []
+    ph_maps = []
+    for line in lines:
+        clean, ph_map = extract_tags_with_placeholders(line)
+        clean_lines.append(apply_glossary(clean))
+        ph_maps.append(ph_map)
+
+    for start in range(0, total, batch_size):
+        end = min(start + batch_size, total)
+        ctx_start = max(0, start - overlap)
+        ctx_end = min(total, end + overlap)
+
+        # Context window is clean text
+        window = [clean_lines[i] for i in range(ctx_start, ctx_end)]
+
+        # You need to implement translate_lines_nllb to use the passed model/tokenizer
+        trans_window = translate_lines_nllb(
+            window, src_lang, tgt_lang, model, tokenizer, device, beams, progress_callback=translation_callback
+        )
+        offset = start - ctx_start
+        batch_translated = trans_window[offset:offset + (end - start)]
+
+        # Restore tags for each line in this batch
+        for rel_idx, text in enumerate(batch_translated):
+            orig_idx = start + rel_idx
+            restored = restore_tags_from_placeholders(text, ph_maps[orig_idx])
+            result.append(restored)
+
+        if translation_callback:
+            for i in range(start + 1, end + 1):
+                translation_callback(i, total)
+
+    return result
+
+

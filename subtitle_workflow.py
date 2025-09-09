@@ -112,3 +112,4 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=8, progress_callback=N
                 progress_callback(current_line, total_lines)
 
     return translated
+
