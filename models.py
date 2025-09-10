@@ -53,20 +53,16 @@ NLLB_MODEL = AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL_NAME, torch_dtype=
 NLLB_MODEL.eval()
 
 def get_nllb_globals():
-    """
-    Return preloaded NLLB model, tokenizer, device, beams, and batch_size.
-    """
-    return NLLB_MODEL, NLLB_TOKENIZER, DEVICE, NLLB_BEAMS, NLLB_BATCH_SIZE
-
-def get_nllb_model(model_name="facebook/nllb-200-1.3B", beams=6, batch_size=16):
-    """
-    Load NLLB-200-1.3B model, tokenizer, and device.
-    Returns (model, tokenizer, device, beams, batch_size)
-    """
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-    device = DEVICE
-    dtype = torch.float16 if torch.cuda.is_available() else None
+    model_name = "facebook/nllb-200-1.3B"
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, torch_dtype=dtype).to(device)
-    model.eval()
-    return model, tokenizer, device, beams, batch_size
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, torch_dtype=dtype).to(device).eval()
+    return model, tokenizer, device
+
+def get_translation_model():
+    model_name = "facebook/m2m100_418M"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to("cuda" if torch.cuda.is_available() else "cpu")
+    return model, tokenizer
+

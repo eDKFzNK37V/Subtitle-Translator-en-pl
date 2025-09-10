@@ -10,6 +10,9 @@ from utils import load_subtitle_lines, save_subtitle_lines
 from advanced_translation import correct_text_batch_nllb, translate_with_context_nllb
 from progress_controller import ProgressController
 from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
+from models import get_nllb_globals
+model, tokenizer, device = get_nllb_globals()
+
 
 
 
@@ -17,6 +20,7 @@ def run_gui_nllb():
     import tkinter as tk
     root = tk.Tk()
     root.title("Subtitle Translator (NLLB)")
+    
     # TODO: Implement NLLB-specific GUI logic here
     
     # ─── Variables ───────────────────────────────────────────────────────────────
@@ -266,6 +270,9 @@ def run_gui_nllb():
                 texts,
                 src_lang.get(),
                 tgt_lang.get(),
+                model,
+                tokenizer,
+                device,
                 polish_only.get(),
                 translation_callback=controller.update_translation_progress
             )
@@ -285,7 +292,7 @@ def run_gui_nllb():
                 "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
                 else "This is a test sentence."
             )
-            correct_text_batch_nllb([warmup_sentence], tgt_lang.get())
+            correct_text_batch_nllb([warmup_sentence], tgt_lang.get(), model, tokenizer, device)
         except Exception as warm_err:
             logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
 
@@ -312,8 +319,8 @@ def run_gui_nllb():
                     try:
                         batch = translated[:warmup_size]
                         cb = correct_text_batch_nllb(
-                            batch, tgt_lang.get(),
-                            progress_callback=lambda done, _: controller.update_post_progress(done, total)
+                            batch, src_lang.get(), tgt_lang.get(), glossary=None,
+                            translation_callback=lambda done, total: controller.update_post_progress(done, total)
                         )
                         corrected_all.extend(cb or [])
                     except Exception as e:
@@ -325,8 +332,8 @@ def run_gui_nllb():
                     batch = translated[start:end]
                     try:
                         cb = correct_text_batch_nllb(
-                            batch, tgt_lang.get(),
-                            progress_callback=lambda done, _, offset=start: controller.update_post_progress(done + offset, total)
+                            batch, src_lang.get(), tgt_lang.get(),
+                            translation_callback=lambda done, total, offset=start: controller.update_post_progress(done + offset, total)
                         )
                         corrected_all.extend(cb or [])
                     except Exception as e:

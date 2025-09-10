@@ -2,16 +2,23 @@
 import os
 import torch
 from utils import load_subtitle_lines, save_subtitle_lines
-from models import get_m2m100_model, get_nllb_model # changed here
-from config import DEVICE
+from models import get_m2m100_model, get_nllb_globals# changed here
+from config import DEVICE, selected_engine as global_selected_engine
 from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
+from pipeline import apply_glossary
+from gui import run_gui
 
-# Load model once
-TRANS_MODEL, TRANS_TOKENIZER = get_m2m100_model()  # changed here
-TRANS_MODEL.eval()
+def model_setup():
+    global TRANS_MODEL, TRANS_TOKENIZER
+    if global_selected_engine == "nllb":
+        TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
+        TRANS_MODEL.eval()
+    else:
+        TRANS_MODEL, TRANS_TOKENIZER = get_m2m100_model()
+        TRANS_MODEL.eval()
 
-
-def translate_lines(lines, src_lang, tgt_lang, translation_callback=None):
+def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossary=None):
+    model_setup()  # Ensure correct model/tokenizer is set
     """
     Translate a list of strings, preserving tag positions via placeholders.
     """
@@ -19,6 +26,7 @@ def translate_lines(lines, src_lang, tgt_lang, translation_callback=None):
     stripped = []
     for line in lines:
         clean, ph_map = extract_tags_with_placeholders(line)
+        clean = apply_glossary(clean, glossary)
         stripped.append(clean)
         ph_maps.append(ph_map)
 
@@ -35,7 +43,8 @@ def translate_lines(lines, src_lang, tgt_lang, translation_callback=None):
         restored.append(restore_tags_from_placeholders(text, ph_maps[i]))
     return restored
 
-def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None):
+def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None):
+    model_setup()  # Ensure correct model/tokenizer is set
     """
     Load (texts, subs, idx_map), extract placeholders, apply glossary in pipeline,
     translate unless polishing, restore placeholders, and save using idx_map.
@@ -47,11 +56,10 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
 
     stripped = []
     ph_maps = []
-    from pipeline import apply_glossary
 
     for line in texts:
         clean, ph_map = extract_tags_with_placeholders(line)
-        clean = apply_glossary(clean)
+        clean = apply_glossary(clean, glossary)
         stripped.append(clean)
         ph_maps.append(ph_map)
 
@@ -81,6 +89,7 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     return output_path, texts, restored_lines
 
 def translate_batch(lines, src_lang, tgt_lang, batch_size=8, progress_callback=None):
+    model_setup()  # Ensure correct model/tokenizer is set
     translated = []
     total_lines = len(lines)
 

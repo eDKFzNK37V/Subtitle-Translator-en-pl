@@ -4,6 +4,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import language_tool_python
 from advanced_translation import translate_lines_nllb
+from subtitle_workflow import translate_lines, model_setup
 from resources import tool_pl, tool_en
 from text_tools import (
     correct_punctuation,
@@ -52,8 +53,9 @@ def _lt_check_with_timeout(tool, text: str, timeout_sec: float):
 # Glossary
 # -----------------------------
 
-def apply_glossary(text: str) -> str:
-    for src, tgt in GLOSSARY.items():
+def apply_glossary(text: str, glossary=None) -> str:
+    glossary = glossary or GLOSSARY
+    for src, tgt in glossary.items():
         text = re.sub(rf"\b{re.escape(src)}\b", tgt, text, flags=re.IGNORECASE)
     return text
 
@@ -176,7 +178,7 @@ def translate_with_context(lines, src_lang, tgt_lang, polish_only=False, transla
     - Applies glossary pre-translation.
     - Respects polish_only flag.
     """
-    from subtitle_workflow import translate_lines
+    model_setup()
 
     total = len(lines)
     result = []
@@ -227,4 +229,6 @@ def translate_with_context(lines, src_lang, tgt_lang, polish_only=False, transla
                 translation_callback(i, total)
 
     return result
+
+
 

@@ -17,3 +17,4 @@ from transformers import (
 )
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+selected_engine = "m2m100" 

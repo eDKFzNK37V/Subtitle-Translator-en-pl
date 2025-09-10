@@ -1,16 +1,13 @@
 # problem_gui.py
 import sys
 import traceback
-import logging
+import logging, config
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import threading
 import os
 from logs import SubtitleLogger
-from utils import load_subtitle_lines, save_subtitle_lines
-from pipeline import correct_text_batch, translate_with_context
 from progress_controller import ProgressController
-from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
 from gui_nllb import run_gui_nllb
 from gui_m2m100 import run_gui_m2m100
 logging.basicConfig(filename="error.log", level=logging.ERROR)
@@ -91,26 +88,26 @@ def run_gui():
             justify="left", fg="#005020"
         )
         m2m_pros.grid(row=0, column=1, padx=10, sticky="w")
-
         update_buttons()
-
+            
         def accept():
             popup.destroy()
 
         accept_btn = tk.Button(popup, text="Accept", width=12, command=accept)
         accept_btn.pack(pady=15)
-
+        
         popup.wait_window()
 
     show_model_popup()
+    config.selected_engine = selected_engine.get()  # <-- set the global indicator
     temp_root.destroy()
-
     # Launch the appropriate GUI
-    if selected_engine.get() == "nllb":
+    if config.selected_engine == "nllb":
         run_gui_nllb()
+        print("NLLB GUI launched")
     else:
         run_gui_m2m100()
-
+        print("M2M100 GUI launched")    
 
 if __name__ == "__main__":
     run_gui()
