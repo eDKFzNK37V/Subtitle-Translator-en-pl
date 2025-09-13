@@ -232,13 +232,14 @@ def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossa
     split_lines = split_grouped_translations(restored_groups, group_map)
     return split_lines
 
-def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None):
-    """
+def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None, n_wordidx=0, use_contextaware_n=False):
+    r"""
     Load (texts, subs, idx_map), apply dialogue grouping, tag handling, and context-aware translation.
+    Enhanced with context-aware \N reinsertion and improved processing pipeline.
     """
     model_setup()  # Ensure correct model/tokenizer is set
     from pipeline import apply_glossary, GLOSSARY
-    from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, group_dialogue_lines, split_grouped_translations
+    from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, insert_newline_tags_contextaware, group_dialogue_lines, split_grouped_translations
 
     texts, subs, idx_map = load_subtitle_lines(file_path)
     if not texts:
@@ -260,7 +261,7 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     grouped_ph_maps = []
     for group in grouped_lines:
         clean, ph_map = extract_tags_with_placeholders(group)
-        clean = apply_glossary(clean, glossary)
+        clean = apply_glossary(clean, glossary, use_context=True)
         grouped_clean.append(clean)
         grouped_ph_maps.append(ph_map)
 
@@ -285,12 +286,19 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     # Split grouped translations back to original lines
     restored_lines = split_grouped_translations(restored_groups, group_map)
 
-    # --- Insert \N tags at a fixed word index (e.g. 0 for CLI) ---
-    n_wordidx = 0
-    final_lines = [
-        insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
-        for line, n_count in zip(restored_lines, n_tag_counts)
-    ]
+    # --- Enhanced \N tag insertion logic ---
+    final_lines = []
+    for line, n_count in zip(restored_lines, n_tag_counts):
+        if n_count > 0:
+            if use_contextaware_n:
+                # Use context-aware insertion
+                processed_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True)
+            else:
+                # Use word index-based insertion (backwards compatibility)
+                processed_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+        else:
+            processed_line = line
+        final_lines.append(processed_line)
 
     ext = file_path.split('.')[-1].lower()
     output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
