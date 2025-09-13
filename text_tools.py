@@ -591,41 +591,87 @@ def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
     if target_lang.lower() == "pl":
         # Polish subtitle style adjustments
         adjustments = [
-            # Make more conversational
-            (r'\bjestem\b', 'jestem'),  # Already informal, keep as is
-            (r'\bproszę\b(?!\s+bardzo)', 'proszę'),  # Keep polite forms
-            
             # Remove overly formal constructions
             (r'\bchciałbym\s+powiedzieć,?\s*że\b', 'chcę powiedzieć, że'),
             (r'\bmuszę\s+przyznać,?\s*że\b', 'przyznaję, że'),
+            (r'\bbyłbym\s+bardzo\s+wdzięczny\b', 'bardzo by mi to pomogło'),
+            (r'\bwydaje\s+mi\s+się,?\s*że\b', 'myślę, że'),
+            (r'\bobawiam\s+się,?\s*że\b', 'niestety'),
+            (r'\bbyć\s+może\s+powinniśmy\b', 'może powinniśmy'),
             
             # Simplify complex phrases
             (r'\bw\s+związku\s+z\s+tym\b', 'dlatego'),
             (r'\bw\s+rezultacie\b', 'w wyniku'),
             (r'\bw\s+konsekwencji\b', 'przez to'),
+            (r'\bw\s+celu\s+ukończenia\b', 'żeby ukończyć'),
+            (r'\bw\s+celu\s+([a-ząćęłńóśźż\s]+)\b', r'żeby \1'),
             
             # Make more natural for speech
             (r'\bale\s+jednak\b', 'ale'),
             (r'\bjednak\s+jednak\b', 'jednak'),
+            (r'\bprawda\s+jest\s+taka,?\s*że\b', 'prawda jest, że'),
+            (r'\bproduktów\s+spożywczych\b', 'jedzenia'),
+            
+            # Conversational replacements
+            (r'\bna\s+pewno\b', 'pewnie'),
+            (r'\bprawdopodobnie\b', 'pewnie'),
+            (r'\bzupełnie\s+nie\b', 'wcale nie'),
         ]
     else:
         # English subtitle style adjustments
         adjustments = [
+            # Enhanced contractions
+            (r"\bI am\b(?!\s+going\s+to)", "I'm"),
+            (r"\byou are\b", "you're"),
+            (r"\bwe are\b", "we're"),
+            (r"\bthey are\b", "they're"),
+            (r"\bhe is\b", "he's"),
+            (r"\bshe is\b", "she's"),
+            (r"\bit is\b(?!\s+important)", "it's"),
+            (r"\bthere is\b", "there's"),
+            (r"\bthat is\b", "that's"),
+            (r"\bwould have\b", "would've"),
+            (r"\bcould have\b", "could've"),
+            (r"\bshould have\b", "should've"),
+            
+            # Convert formal expressions to conversational
+            (r"\bI would like to\b", "I'd like to"),
+            (r"\bI would be very grateful if\b", "I'd really appreciate if"),
+            (r"\bIt is important that\b", "You need to"),
+            (r"\bI am afraid that\b", "I'm afraid"),
+            (r"\bPerhaps we should\b", "Maybe we should"),
+            (r"\bIt seems to me that\b", "I think"),
+            
             # Make more conversational
             (r"\bI'm going to\b", "I'll"),
             (r"\bdo not\b", "don't"),
             (r"\bcannot\b", "can't"),
             (r"\bwill not\b", "won't"),
+            (r"\bshall not\b", "won't"),
+            (r"\bmust not\b", "can't"),
             
             # Remove unnecessary filler
             (r'\bwell,?\s+', ''),
             (r'\buh,?\s+', ''),
             (r'\bum,?\s+', ''),
+            (r'\byou know,?\s+', ''),
             
             # Simplify formal phrases
             (r'\bin order to\b', 'to'),
             (r'\bdue to the fact that\b', 'because'),
             (r'\bfor the reason that\b', 'because'),
+            (r'\bby means of\b', 'using'),
+            (r'\bwith regard to\b', 'about'),
+            (r'\bin the event that\b', 'if'),
+            (r'\bfor the purpose of\b', 'to'),
+            
+            # Shorter alternatives for common phrases
+            (r'\ba large number of\b', 'many'),
+            (r'\ba great deal of\b', 'lots of'),
+            (r'\bat this point in time\b', 'now'),
+            (r'\bin the near future\b', 'soon'),
+            (r'\bmake an attempt to\b', 'try to'),
+            (r'\bgive consideration to\b', 'consider'),
         ]
     
     adjusted = text
@@ -646,9 +692,15 @@ def _optimize_for_subtitles(text: str) -> str:
     text = re.sub(r'[!]{2,}', '!', text)    # Single exclamation
     text = re.sub(r'[?]{2,}', '?', text)    # Single question mark
     
-    # Fix spacing
+    # Fix spacing issues
     text = re.sub(r'\s+', ' ', text)        # Multiple spaces to single
-    text = re.sub(r'\s+([.!?])', r'\1', text)  # Remove space before punctuation
+    text = re.sub(r'\s+([.!?,:;])', r'\1', text)  # Remove space before punctuation
+    text = re.sub(r'([.!?])\s*([.!?])', r'\1', text)  # Remove duplicate punctuation
+    
+    # Handle common formatting issues
+    text = re.sub(r'\s*-\s*', ' - ', text)  # Normalize dashes
+    text = re.sub(r'"\s*([^"]*)\s*"', r'"\1"', text)  # Fix quote spacing
+    text = re.sub(r"'\s*([^']*)\s*'", r"'\1'", text)  # Fix single quote spacing
     
     # Ensure proper capitalization after sentence breaks
     def capitalize_after_sentence(match):
@@ -656,12 +708,59 @@ def _optimize_for_subtitles(text: str) -> str:
     
     text = re.sub(r'([.!?]\s+)([a-z])', capitalize_after_sentence, text)
     
-    return text
+    # Fix capitalization at the beginning
+    if text and text[0].islower():
+        text = text[0].upper() + text[1:]
+    
+    return text.strip()
 
 def apply_style_tone_batch(texts: List[str], target_lang: str = "pl") -> List[str]:
     """
-    Apply style and tone adjustments to a batch of texts.
+    Apply style and tone adjustments to a batch of texts with enhanced conversational patterns.
     """
     return [adjust_subtitle_style_tone(text, target_lang) for text in texts]
+
+def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
+    """
+    Detect overly formal language and suggest improvements for subtitle context.
+    """
+    if not text.strip():
+        return text
+    
+    # Apply standard style adjustments first
+    improved = adjust_subtitle_style_tone(text, target_lang)
+    
+    # Additional formality detection and correction
+    if target_lang.lower() == "pl":
+        # Polish formality patterns
+        formal_patterns = [
+            (r'\bpoproszę\s+o\b', 'poproszę'),
+            (r'\bmam\s+nadzieję,?\s*że\b', 'mam nadzieję, że'),
+            (r'\bchciałbym\s+się\s+dowiedzieć\b', 'chcę wiedzieć'),
+            (r'\bczy\s+mógłbym\s+prosić\b', 'czy mogę prosić'),
+            (r'\bjestem\s+bardzo\s+wdzięczny\b', 'dziękuję bardzo'),
+            (r'\bzgadzam\s+się\s+z\s+panem/panią\b', 'zgadzam się'),
+            (r'\bproszę\s+o\s+wybaczenie\b', 'przepraszam'),
+            (r'\bbyć\s+może\s+było\s+by\b', 'może byłoby'),
+        ]
+    else:
+        # English formality patterns
+        formal_patterns = [
+            (r'\bI would be delighted to\b', "I'd love to"),
+            (r'\bI would appreciate it if\b', "I'd appreciate if"),
+            (r'\bCould you please\b', 'Can you'),
+            (r'\bWould you be so kind as to\b', 'Could you'),
+            (r'\bI beg your pardon\b', 'Sorry'),
+            (r'\bAllow me to\b', "Let me"),
+            (r'\bI must confess\b', "I have to say"),
+            (r'\bI dare say\b', "I'd say"),
+            (r'\bIf I may\b', "If I can"),
+            (r'\bForgive me for\b', "Sorry for"),
+        ]
+    
+    for pattern, replacement in formal_patterns:
+        improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+    
+    return improved
     
 

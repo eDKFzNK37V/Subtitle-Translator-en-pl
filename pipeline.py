@@ -15,6 +15,7 @@ from text_tools import (
     restore_tags_from_placeholders,
     adjust_subtitle_style_tone,
     apply_style_tone_batch,
+    detect_and_improve_formality,
 )
 
 GLOSSARY = ENHANCED_GLOSSARY
@@ -98,8 +99,8 @@ def correct_text(text, lang):
         except Exception:
             pass
             
-        # Style/tone adjustment for subtitles
-        text = adjust_subtitle_style_tone(text, lang)
+        # Style/tone adjustment for subtitles with enhanced formality detection
+        text = detect_and_improve_formality(text, lang)
         
         return clean_translation(text)
     except Exception:
@@ -175,11 +176,15 @@ def correct_text_batch(lines, lang, progress_callback=None):
             with ThreadPoolExecutor(max_workers=MAX_WORKERS_LT) as ex:
                 cleans = list(ex.map(lt_fix, cleans))
 
-        # 5) Style/tone adjustment for subtitle context
+        # 5) Style/tone adjustment for subtitle context with enhanced formality detection
         try:
-            cleans = apply_style_tone_batch(cleans, lang_lower)
+            cleans = [detect_and_improve_formality(text, lang_lower) for text in cleans]
         except Exception:
-            pass  # If style adjustment fails, continue with existing text
+            # Fallback to basic style adjustment
+            try:
+                cleans = apply_style_tone_batch(cleans, lang_lower)
+            except Exception:
+                pass  # If style adjustment fails, continue with existing text
 
         # 6) Final clean + restore placeholders
         for i, t in enumerate(cleans):

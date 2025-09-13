@@ -41,6 +41,20 @@ ENHANCED_GLOSSARY = {
     "oh my god": "o mój Boże",
     "what the hell": "co do diabła",
     "damn it": "cholera",
+    "all right": "w porządku",
+    "okay": "okej",
+    "whatever": "nieważne",
+    "anyway": "w każdym razie",
+    "actually": "właściwie",
+    "seriously": "serio",
+    "honestly": "szczerze",
+    "obviously": "oczywiście",
+    "exactly": "dokładnie",
+    "totally": "całkowicie",
+    "really": "naprawdę",
+    "basically": "w zasadzie",
+    "literally": "dosłownie",
+    "personally": "osobiście"
     
     # Formal/business terms
     "meeting": "spotkanie",
