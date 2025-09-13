@@ -116,19 +116,18 @@ def translate_with_context_nllb(
     translation_callback=None
 ):
     """
-    Translate lines with small context windows using NLLB.
-    - Preserves order and length.
+    Context-aware translation with dialogue grouping and robust tag handling.
+    - Groups consecutive lines for translation if the next starts with a lowercase letter.
+    - Translates grouped lines in context, then splits back to original lines.
+    - Preserves tag positions and mapping.
     - Applies glossary pre-translation.
     - Respects polish_only flag.
     """
     from pipeline import apply_glossary, GLOSSARY
+    from text_tools import group_dialogue_lines, split_grouped_translations
     model_setup()
 
     total = len(lines)
-    result = []
-    overlap = 2
-
-    # No translation if polishing only and langs match
     if polish_only and src_lang.lower() == tgt_lang.lower():
         out = []
         for line in lines:
@@ -140,51 +139,44 @@ def translate_with_context_nllb(
                 translation_callback(i, total)
         return out
 
-    # Pre-extract tags/placeholders for all lines
-    clean_lines = []
-    ph_maps = []
-    for line in lines:
-        clean, ph_map = extract_tags_with_placeholders(line)
-        clean = apply_glossary(clean, glossary)
-        clean_lines.append(clean)
-        ph_maps.append(ph_map)
+    # Group dialogue lines for context-aware translation
+    grouped_lines, group_map = group_dialogue_lines(lines)
 
+    # Pre-extract tags/placeholders for all grouped lines
+    grouped_clean = []
+    grouped_ph_maps = []
+    for group in grouped_lines:
+        clean, ph_map = extract_tags_with_placeholders(group)
+        clean = apply_glossary(clean, glossary)
+        grouped_clean.append(clean)
+        grouped_ph_maps.append(ph_map)
 
     # Detect model type by tokenizer/model class name
     model_type = "nllb" if hasattr(tokenizer, "lang_code_to_token") and hasattr(tokenizer, "set_src_lang_special_tokens") else "m2m100"
     src_code = get_model_lang_code(src_lang, model_type)
     tgt_code = get_model_lang_code(tgt_lang, model_type)
 
-    for start in range(0, total, batch_size):
-        end = min(start + batch_size, total)
-        ctx_start = max(0, start - overlap)
-        ctx_end = min(total, end + overlap)
-
-        # Context window is clean text
-        window = [clean_lines[i] for i in range(ctx_start, ctx_end)]
-
-        # Use correct codes for this model
-        trans_window = translate_lines_nllb(
-            model, tokenizer, device, window, src_code, tgt_code, batch_size=batch_size, progress_callback=None
-        )
-
-
-        offset = start - ctx_start
-        batch_translated = trans_window[offset:offset + (end - start)]
-
-        # Restore tags for each line in this batch
-        for rel_idx, text in enumerate(batch_translated):
-            orig_idx = start + rel_idx
-            restored = restore_tags_from_placeholders(text, ph_maps[orig_idx])
-            result.append(restored)
-
+    # Translate grouped lines in batches
+    translated_groups = []
+    for i in range(0, len(grouped_clean), batch_size):
+        batch = grouped_clean[i:i+batch_size]
+        preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang, batch_size=batch_size, progress_callback=None)
+        translated_groups.extend(preds)
         if translation_callback:
-            for i in range(start + 1, end + 1):
-                translation_callback(i, total)
+            progress = min(i + len(batch), len(grouped_clean))
+            translation_callback(progress, len(grouped_clean))
 
+    # Restore tags for each group
+    restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_map in zip(translated_groups, grouped_ph_maps)]
 
+    # Split grouped translations back to original lines
+    split_lines = split_grouped_translations(restored_groups, group_map)
 
-    return result
+    if translation_callback:
+        for i in range(1, total + 1):
+            translation_callback(i, total)
+
+    return split_lines
 
 def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None):
     model_setup()
@@ -203,77 +195,108 @@ def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translatio
 
 
 def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossary=None):
+    """
+    Context-aware translation with dialogue grouping and robust tag handling.
+    Groups consecutive lines for translation if the next starts with a lowercase letter.
+    Translates grouped lines, then splits back to original lines.
+    """
     model_setup()  # Ensure correct model/tokenizer is set
     from pipeline import apply_glossary, GLOSSARY
-    """
-    Translate a list of strings, preserving tag positions via placeholders.
-    """
-    ph_maps = []
-    stripped = []
-    for line in lines:
-        clean, ph_map = extract_tags_with_placeholders(line)
-        clean = apply_glossary(clean, glossary)
-        stripped.append(clean)
-        ph_maps.append(ph_map)
+    from text_tools import group_dialogue_lines, split_grouped_translations
 
-    translated = translate_batch(
-        stripped,
+    # Group dialogue lines for context-aware translation
+    grouped_lines, group_map = group_dialogue_lines(lines)
+
+    # Pre-extract tags/placeholders for all grouped lines
+    grouped_clean = []
+    grouped_ph_maps = []
+    for group in grouped_lines:
+        clean, ph_map = extract_tags_with_placeholders(group)
+        clean = apply_glossary(clean, glossary)
+        grouped_clean.append(clean)
+        grouped_ph_maps.append(ph_map)
+
+    # Translate grouped lines
+    translated_groups = translate_batch(
+        grouped_clean,
         src_lang,
         tgt_lang,
         batch_size=8,
         progress_callback=translation_callback
     )
 
-    restored = []
-    for i, text in enumerate(translated):
-        restored.append(restore_tags_from_placeholders(text, ph_maps[i]))
-    return restored
+    # Restore tags for each group
+    restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_map in zip(translated_groups, grouped_ph_maps)]
+
+    # Split grouped translations back to original lines
+    split_lines = split_grouped_translations(restored_groups, group_map)
+    return split_lines
 
 def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None):
+    """
+    Load (texts, subs, idx_map), apply dialogue grouping, tag handling, and context-aware translation.
+    """
     model_setup()  # Ensure correct model/tokenizer is set
     from pipeline import apply_glossary, GLOSSARY
-    """
-    Load (texts, subs, idx_map), extract placeholders, apply glossary in pipeline,
-    translate unless polishing, restore placeholders, and save using idx_map.
-    """
-    texts, subs, idx_map = load_subtitle_lines(file_path)
+    from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, group_dialogue_lines, split_grouped_translations
 
+    texts, subs, idx_map = load_subtitle_lines(file_path)
     if not texts:
         raise ValueError(f"[translate_subtitles] No subtitle lines loaded from {file_path!r}")
 
-    stripped = []
-    ph_maps = []
-
+    # --- Remove \N tags and count them ---
+    cleaned_lines = []
+    n_tag_counts = []
     for line in texts:
-        clean, ph_map = extract_tags_with_placeholders(line)
+        cleaned, n_count = extract_newline_tags(line)
+        cleaned_lines.append(cleaned)
+        n_tag_counts.append(n_count)
+
+    # Dialogue grouping for context-aware translation
+    grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
+
+    # Pre-extract tags/placeholders for all grouped lines
+    grouped_clean = []
+    grouped_ph_maps = []
+    for group in grouped_lines:
+        clean, ph_map = extract_tags_with_placeholders(group)
         clean = apply_glossary(clean, glossary)
-        stripped.append(clean)
-        ph_maps.append(ph_map)
+        grouped_clean.append(clean)
+        grouped_ph_maps.append(ph_map)
 
     # If polishing only and same language, skip model translate
     if polish_only and src_lang.lower() == tgt_lang.lower():
-        translated = stripped[:]
+        translated_groups = grouped_clean[:]
         if translation_callback:
-            for idx in range(1, len(translated) + 1):
-                translation_callback(idx, len(translated))
+            for idx in range(1, len(translated_groups) + 1):
+                translation_callback(idx, len(translated_groups))
     else:
-        translated = translate_batch(
-            stripped,
+        translated_groups = translate_batch(
+            grouped_clean,
             src_lang,
             tgt_lang,
             batch_size=8,
             progress_callback=translation_callback
         )
 
-    restored_lines = [
-        restore_tags_from_placeholders(translated[i], ph_maps[i]) for i in range(len(translated))
+    # Restore tags for each group
+    restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_map in zip(translated_groups, grouped_ph_maps)]
+
+    # Split grouped translations back to original lines
+    restored_lines = split_grouped_translations(restored_groups, group_map)
+
+    # --- Insert \N tags at a fixed word index (e.g. 0 for CLI) ---
+    n_wordidx = 0
+    final_lines = [
+        insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+        for line, n_count in zip(restored_lines, n_tag_counts)
     ]
 
     ext = file_path.split('.')[-1].lower()
     output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
-    save_subtitle_lines(restored_lines, output_path, subs, idx_map)
+    save_subtitle_lines(final_lines, output_path, subs, idx_map)
 
-    return output_path, texts, restored_lines
+    return output_path, texts, final_lines
 
 def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=None):
     model_setup()  # Ensure correct model/tokenizer is set

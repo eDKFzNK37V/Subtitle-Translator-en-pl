@@ -27,7 +27,7 @@ GLOSSARY = {
 
 MAX_CHARS_FOR_MODELS = 800
 LT_TIMEOUT = 1.5          # seconds per line
-MAX_WORKERS_LT = 4        # LT parallelism
+MAX_WORKERS_LT = 8        # LT parallelism
 CORR_BATCH_SIZE = 32      # correction batch size
 
 def _clamp(text: str, max_chars: int = MAX_CHARS_FOR_MODELS) -> str:
@@ -92,43 +92,59 @@ def correct_text(text, lang):
 # Batch correction (per-line guarded)
 # -----------------------------
 
+
 def correct_text_batch(lines, lang, progress_callback=None):
+    """
+    Context-aware correction: group dialogue lines, correct in context, then split back.
+    """
+    from text_tools import group_dialogue_lines, split_grouped_translations
     total = len(lines)
-    out = ["" for _ in range(total)]
     lang_lower = lang.lower()
     use_lt = lang_lower in ("pl", "en")
     lt_tool = tool_pl if lang_lower == "pl" else (tool_en if lang_lower == "en" else None)
 
-    for start in range(0, total, CORR_BATCH_SIZE):
-        end = min(start + CORR_BATCH_SIZE, total)
-        batch = lines[start:end]
+    # Group dialogue lines for context-aware correction
+    grouped_lines, group_map = group_dialogue_lines(lines)
 
+
+    # Correction pipeline for grouped lines (new order: neural grammar → punctuation → LanguageTool)
+    grouped_corrected = []
+    for group in grouped_lines:
         # 1) Placeholders + glossary
-        ph_maps = []
+        ph_map = []
         cleans = []
-        for line in batch:
-            clean, ph_map = extract_tags_with_placeholders(line)
-            ph_maps.append(ph_map)
-            # optional glossary
+        for line in [group]:
+            clean, ph = extract_tags_with_placeholders(line)
+            ph_map.append(ph)
             for src, tgt in GLOSSARY.items():
                 clean = re.sub(rf"\b{re.escape(src)}\b", tgt, clean, flags=re.IGNORECASE)
             cleans.append(clean)
 
-        # 2) Grammar (batched where beneficial)
-        if lang_lower == "en":
-            try:
-                cleans = correct_grammar_batch([_clamp(t) for t in cleans])
-            except Exception:
-                # fallback: per-line guarded
-                tmp = []
-                for t in cleans:
-                    try:
-                        tmp.append(correct_grammar(_clamp(t)))
-                    except Exception:
-                        tmp.append(t)
-                cleans = tmp
+        # 2) Neural grammar correction (batched, all languages)
+        try:
+            cleans = correct_grammar_batch([_clamp(t) for t in cleans])
+        except Exception:
+            tmp = []
+            for t in cleans:
+                try:
+                    tmp.append(correct_grammar(_clamp(t)))
+                except Exception:
+                    tmp.append(t)
+            cleans = tmp
 
-        # 3) LanguageTool (parallel per line, short timeout, skip long lines)
+        # 3) Punctuation restoration (batched)
+        try:
+            cleans = correct_punctuation_batch([_clamp(t) for t in cleans], "kredor")
+        except Exception:
+            tmp = []
+            for t in cleans:
+                try:
+                    tmp.append(correct_punctuation(_clamp(t), "kredor"))
+                except Exception:
+                    tmp.append(t)
+            cleans = tmp
+
+        # 4) LanguageTool correction (parallel per line, short timeout, skip long lines)
         if use_lt and lt_tool is not None:
             def lt_fix(t):
                 t_short = _clamp(t)
@@ -142,28 +158,21 @@ def correct_text_batch(lines, lang, progress_callback=None):
             with ThreadPoolExecutor(max_workers=MAX_WORKERS_LT) as ex:
                 cleans = list(ex.map(lt_fix, cleans))
 
-        # 4) Punctuation (batched)
-        try:
-            cleans = correct_punctuation_batch([_clamp(t) for t in cleans], "kredor")
-        except Exception:
-            # fallback single-line punctuation if needed
-            tmp = []
-            for t in cleans:
-                try:
-                    tmp.append(correct_punctuation(_clamp(t), "kredor"))
-                except Exception:
-                    tmp.append(t)
-            cleans = tmp
-
         # 5) Final clean + restore placeholders
         for i, t in enumerate(cleans):
             corrected = clean_translation(t)
-            corrected = restore_tags_from_placeholders(corrected, ph_maps[i])
-            out[start + i] = corrected
-            if progress_callback:
-                progress_callback(start + i + 1, total)
+            corrected = restore_tags_from_placeholders(corrected, ph_map[i])
+            grouped_corrected.append(corrected)
 
-    return out
+    # Split grouped corrections back to original lines
+    split_lines = split_grouped_translations(grouped_corrected, group_map)
+
+    # Progress callback for each line
+    if progress_callback:
+        for idx in range(1, total + 1):
+            progress_callback(idx, total)
+
+    return split_lines
 
 
 # -----------------------------

@@ -14,6 +14,14 @@ from text_tools import extract_tags_with_placeholders, restore_tags_from_placeho
 
 
 def run_gui_m2m100():
+    global subs, idx_map, originals, pristine_originals, output_path, translated, placeholder_maps
+    subs = None
+    idx_map = []
+    originals = []
+    pristine_originals = []
+    translated = []
+    output_path = ""
+    placeholder_maps = []
     import tkinter as tk
     root = tk.Tk()
     root.title("Subtitle Translator (m2m100)")
@@ -28,6 +36,7 @@ def run_gui_m2m100():
     src_lang = tk.StringVar(value="en")
     tgt_lang = tk.StringVar(value="pl")
     file_type = tk.StringVar(value="ass")  # Default to .ass on startup
+    n_tag_wordidx = tk.IntVar(value=0)
 
     # ─── Layout ──────────────────────────────────────────────────────────────────
     tk.Label(root, text="Subtitle File:").grid(row=0, column=0, sticky="w")
@@ -44,6 +53,10 @@ def run_gui_m2m100():
     tk.OptionMenu(root, file_type, *FILE_TYPES).grid(row=3, column=1, sticky="w")
 
     tk.Checkbutton(root, text="Polish Only", variable=polish_only).grid(row=4, column=1, sticky="w")
+
+    tk.Label(root, text="\\N tag word index:").grid(row=5, column=0, sticky="w")
+    n_tag_wordidx_spin = tk.Spinbox(root, from_=0, to=50, textvariable=n_tag_wordidx, width=5)
+    n_tag_wordidx_spin.grid(row=5, column=1, sticky="w")
 
     formatting_cb = tk.Checkbutton(
         root,
@@ -127,6 +140,27 @@ def run_gui_m2m100():
 
     # ─── Review Dialogs ─────────────────────────────────────────────────────────
     def review_txt_translations(orig_nonempty, trans, out_path, log_path):
+        # After user approves, show flexion/grammar error preview
+        def show_flexion_preview(lines):
+            import language_tool_python
+            tool = language_tool_python.LanguageTool('pl-PL')
+            preview = tk.Toplevel(root)
+            preview.title("Podgląd błędów fleksyjnych/gramatycznych (LanguageTool)")
+            preview.geometry("900x600")
+            text = tk.Text(preview, wrap="word", font=("Courier", 10))
+            text.pack(fill=tk.BOTH, expand=True)
+            for idx, line in enumerate(lines):
+                matches = tool.check(line)
+                if matches:
+                    text.insert(tk.END, f"Linia {idx+1}: {line}\n", "err")
+                    for m in matches:
+                        text.insert(tk.END, f"  - {m.ruleId}: {m.message}\n", "msg")
+                else:
+                    text.insert(tk.END, f"Linia {idx+1}: {line}\n", "ok")
+            text.tag_config("err", foreground="red")
+            text.tag_config("msg", foreground="orange")
+            text.tag_config("ok", foreground="black")
+            tk.Button(preview, text="Zamknij", command=preview.destroy).pack(pady=10)
         fresh_orig, _, _ = load_subtitle_lines(file_path.get())
 
         review = tk.Toplevel(root)
@@ -183,43 +217,70 @@ def run_gui_m2m100():
         tk.Button(review, text="Approve and Save", command=approve_and_save).pack(pady=10)
 
     def review_sub_translations(orig_nonempty, trans, out_path, log_path):
+        # After user approves, show flexion/grammar error preview
+        def show_flexion_preview(lines):
+            import language_tool_python
+            tool = language_tool_python.LanguageTool('pl-PL')
+            preview = tk.Toplevel(root)
+            preview.title("Podgląd błędów fleksyjnych/gramatycznych (LanguageTool)")
+            preview.geometry("900x600")
+            text = tk.Text(preview, wrap="word", font=("Courier", 10))
+            text.pack(fill=tk.BOTH, expand=True)
+            for idx, line in enumerate(lines):
+                matches = tool.check(line)
+                if matches:
+                    text.insert(tk.END, f"Linia {idx+1}: {line}\n", "err")
+                    for m in matches:
+                        text.insert(tk.END, f"  - {m.ruleId}: {m.message}\n", "msg")
+                else:
+                    text.insert(tk.END, f"Linia {idx+1}: {line}\n", "ok")
+            text.tag_config("err", foreground="red")
+            text.tag_config("msg", foreground="orange")
+            text.tag_config("ok", foreground="black")
+            tk.Button(preview, text="Zamknij", command=preview.destroy).pack(pady=10)
         fresh_orig, _, _ = load_subtitle_lines(file_path.get())
 
         review = tk.Toplevel(root)
         review.title("Review Translations")
         review.geometry("900x600")
         review.protocol("WM_DELETE_WINDOW", lambda: (review.destroy(), on_translation_error("Canceled")))
+        # Use a single canvas with a frame containing a 2-column grid for originals and translations
         frame = tk.Frame(review)
         frame.pack(fill=tk.BOTH, expand=True)
         canvas = tk.Canvas(frame)
         scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
         scrollable = tk.Frame(canvas)
+        canvas.create_window((0, 0), window=scrollable, anchor="nw")
         scrollable.bind(
             "<Configure>",
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-        canvas.create_window((0, 0), window=scrollable, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+
+        # Add headers
+        tk.Label(scrollable, text="Original", font=("Arial", 10, "bold")).grid(row=0, column=1, sticky="w", padx=2)
+        tk.Label(scrollable, text="Translation", font=("Arial", 10, "bold")).grid(row=0, column=2, sticky="w", padx=2)
 
         entries = []
         count = min(len(fresh_orig), len(trans))
         for i in range(count):
             o = fresh_orig[i]
             t = trans[i]
-            tk.Label(scrollable, text=f"Line {i+1}:", width=12, anchor="w").grid(row=i, column=0, sticky="w")
+            tk.Label(scrollable, text=f"{i+1}", width=4, anchor="e").grid(row=i+1, column=0, sticky="e")
             tk.Label(
                 scrollable,
                 text=o.strip(),
-                width=40,
+                width=50,
                 anchor="w",
                 wraplength=350,
                 fg="gray"
-            ).grid(row=i, column=1, sticky="w")
+            ).grid(row=i+1, column=1, sticky="w")
             ent = tk.Entry(scrollable, width=120)
             ent.insert(0, t.strip())
-            ent.grid(row=i, column=2, sticky="w")
+            ent.grid(row=i+1, column=2, sticky="w")
             entries.append(ent)
 
         def approve_and_save():
@@ -250,49 +311,59 @@ def run_gui_m2m100():
             messagebox.showerror("Error", "Please fill all fields.")
             return
 
+
+
+        # --- Load lines and extract \N tags ---
         texts, subs_loaded, idx_map_loaded = load_subtitle_lines(path)
         if not texts:
             messagebox.showerror("Error", "No subtitle lines found.")
             return
 
-        nonlocal subs, idx_map, originals, pristine_originals, output_path, translated, placeholder_maps
+        # --- Remove \N tags and group dialogue lines before translation ---
+        from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, group_dialogue_lines, split_grouped_translations
+        n_wordidx = n_tag_wordidx.get()
+        cleaned_texts = []
+        n_tag_counts = []
+        for line in texts:
+            cleaned, n_tags = extract_newline_tags(line)
+            cleaned_texts.append(cleaned)
+            n_tag_counts.append(n_tags)
+        # Group lines for translation
+        grouped_lines, group_map = group_dialogue_lines(cleaned_texts)
+
+        # Assign to module-level variables for later use
+        global subs, idx_map, originals, pristine_originals, output_path, translated, placeholder_maps
         subs = subs_loaded
         idx_map = idx_map_loaded
-        originals = texts[:]
-        pristine_originals = texts[:]
+        originals = cleaned_texts[:]
+        pristine_originals = cleaned_texts[:]
+        # Now do placeholder/tag logic on cleaned_texts
+        placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in cleaned_texts]
 
-        placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in texts]
-
-        total_lines = len(texts)
+        total_lines = len(grouped_lines)  # Use grouped lines for translation progress
         controller.start(total_lines)
 
         try:
-            translated = translate_with_context(
-                texts,
+            # Translate grouped lines
+            translated_groups = translate_with_context(
+                grouped_lines,
                 src_lang.get(),
                 tgt_lang.get(),
                 polish_only.get(),
                 translation_callback=controller.update_translation_progress
             )
+            # Split translations back to original lines
+            translated = split_grouped_translations(translated_groups, group_map)
+            # Do NOT re-insert \N tags here; defer to post-processing
             base, ext = os.path.splitext(path)
             tgt = tgt_lang.get()
             output_path = f"{base}_{tgt}{ext}"
             save_subtitle_lines(translated, output_path, subs, idx_map)
         except Exception as e:
             logging.exception("[translate] Failed")
-            on_translation_error(e)
+            if 'on_translation_error' in globals():
+                on_translation_error(e)
             return
-
-        controller.set_post_total(len(translated))
-
-        try:
-            warmup_sentence = (
-                "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
-                else "This is a test sentence."
-            )
-            correct_text_batch([warmup_sentence], tgt_lang.get())
-        except Exception as warm_err:
-            logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
 
         root.after(0, controller.show_post_start)
 
@@ -345,9 +416,15 @@ def run_gui_m2m100():
                 stop_flag["stop"] = True
                 root.after(0, lambda: controller.update_post_progress(total, total))
 
-                for idx, (orig, trans, corr) in enumerate(zip(originals, translated, corrected_all)):
+                # Insert \N tags at user-specified word index as the final step
+                n_wordidx = n_tag_wordidx.get()
+                final_lines = [
+                    insert_newline_tags_at_wordidx(line, n_tags, n_wordidx)
+                    for line, n_tags in zip(corrected_all, n_tag_counts)
+                ]
+                for idx, (orig, trans, corr, final) in enumerate(zip(originals, translated, corrected_all, final_lines)):
                     try:
-                        logger.log_entry(idx, orig, trans, corr, tags_before=[], tags_after=[])
+                        logger.log_entry(idx, orig, trans, final, tags_before=[], tags_after=[])
                     except Exception:
                         logging.exception(f"[do_post] Logging failed on line {idx+1}")
                 try:
@@ -357,7 +434,7 @@ def run_gui_m2m100():
 
                 log_path = logger.get_log_path() if hasattr(logger, "get_log_path") else logger.log_txt
                 review_fn = review_txt_translations if file_type.get() == "txt" else review_sub_translations
-                root.after(0, review_fn, pristine_originals, corrected_all, output_path, log_path)
+                root.after(0, review_fn, pristine_originals, final_lines, output_path, log_path)
 
             except Exception as e:
                 logging.exception(f"[do_post] Unhandled exception: {e}")
