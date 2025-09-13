@@ -7,7 +7,7 @@ import threading
 import os
 from logs import SubtitleLogger
 from utils import load_subtitle_lines, save_subtitle_lines
-from advanced_translation import correct_text_batch_nllb, translate_with_context_nllb
+from subtitle_workflow import correct_text_batch_nllb, translate_with_context_nllb
 from progress_controller import ProgressController
 from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
 from models import get_nllb_globals
@@ -22,7 +22,7 @@ def run_gui_nllb():
     root.title("Subtitle Translator (NLLB)")
     
     # TODO: Implement NLLB-specific GUI logic here
-    
+
     # ─── Variables ───────────────────────────────────────────────────────────────
     file_path = tk.StringVar()
     polish_only = tk.BooleanVar(value=False)
@@ -244,7 +244,31 @@ def run_gui_nllb():
 
     # ─── Main Translation Flow ──────────────────────────────────────────────────
     def start_translation():
+        # Ensure the correct engine is set for the pipeline
+        import config
+        config.selected_engine = "nllb"
+
         path = file_path.get()
+
+        # Defensive check: Only allow 'en'/'pl' (or allowed LANG_OPTIONS) from GUI
+        allowed_langs = ["en", "pl", "ja", "fr", "de"]
+        if src_lang.get() not in allowed_langs or tgt_lang.get() not in allowed_langs:
+            logging.warning(f"[GUI] Invalid language code from GUI: src={src_lang.get()}, tgt={tgt_lang.get()}")
+            messagebox.showerror("Error", f"Invalid language code selected: {src_lang.get()} → {tgt_lang.get()}. Please use the dropdown.")
+            return
+        if not (path and src_lang.get() and tgt_lang.get()):
+            messagebox.showerror("Error", "Please fill all fields.")
+            return
+
+        nonlocal subs, idx_map, originals, pristine_originals, output_path, translated, placeholder_maps
+        path = file_path.get()
+
+        # Defensive check: Only allow 'en'/'pl' (or allowed LANG_OPTIONS) from GUI
+        allowed_langs = ["en", "pl", "ja", "fr", "de"]
+        if src_lang.get() not in allowed_langs or tgt_lang.get() not in allowed_langs:
+            logging.warning(f"[GUI] Invalid language code from GUI: src={src_lang.get()}, tgt={tgt_lang.get()}")
+            messagebox.showerror("Error", f"Invalid language code selected: {src_lang.get()} → {tgt_lang.get()}. Please use the dropdown.")
+            return
         if not (path and src_lang.get() and tgt_lang.get()):
             messagebox.showerror("Error", "Please fill all fields.")
             return
@@ -292,7 +316,7 @@ def run_gui_nllb():
                 "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
                 else "This is a test sentence."
             )
-            correct_text_batch_nllb([warmup_sentence], tgt_lang.get(), model, tokenizer, device)
+            correct_text_batch_nllb([warmup_sentence], src_lang.get(), tgt_lang.get())
         except Exception as warm_err:
             logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
 
@@ -303,8 +327,6 @@ def run_gui_nllb():
                 logger = SubtitleLogger(file_path.get(), tgt_lang.get(), idx_map=idx_map)
                 total = len(translated)
                 corrected_all = []
-
-                root.after(0, lambda: controller.update_post_progress(1, total))
                 root.after(0, lambda: controller.post_label.config(text="Post-processing: starting…"))
 
                 stop_flag = {"stop": False}
@@ -320,7 +342,7 @@ def run_gui_nllb():
                         batch = translated[:warmup_size]
                         cb = correct_text_batch_nllb(
                             batch, src_lang.get(), tgt_lang.get(), glossary=None,
-                            translation_callback=lambda done, total: controller.update_post_progress(done, total)
+                            translation_callback=lambda done, _batch_total, total=total: controller.update_post_progress(done, total)
                         )
                         corrected_all.extend(cb or [])
                     except Exception as e:
@@ -333,7 +355,7 @@ def run_gui_nllb():
                     try:
                         cb = correct_text_batch_nllb(
                             batch, src_lang.get(), tgt_lang.get(),
-                            translation_callback=lambda done, total, offset=start: controller.update_post_progress(done + offset, total)
+                            translation_callback=lambda done, _batch_total, offset=start, total=total: controller.update_post_progress(done + offset, total)
                         )
                         corrected_all.extend(cb or [])
                     except Exception as e:
@@ -344,8 +366,10 @@ def run_gui_nllb():
                 if len(corrected_all) < total:
                     corrected_all.extend(translated[len(corrected_all):total])
 
-                stop_flag["stop"] = True
-                root.after(0, lambda: controller.update_post_progress(total, total))
+                def final_update_and_stop():
+                    controller.update_post_progress(total, total)
+                    stop_flag["stop"] = True
+                root.after(0, final_update_and_stop)
 
                 for idx, (orig, trans, corr) in enumerate(zip(originals, translated, corrected_all)):
                     try:

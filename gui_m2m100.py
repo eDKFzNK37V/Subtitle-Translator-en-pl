@@ -239,7 +239,12 @@ def run_gui_m2m100():
         tk.Button(review, text="Approve and Save", command=approve_and_save).pack(pady=10)
 
     # ─── Main Translation Flow ──────────────────────────────────────────────────
+
     def start_translation():
+        # Ensure the correct engine is set for the pipeline
+        import config
+        config.selected_engine = "m2m100"
+
         path = file_path.get()
         if not (path and src_lang.get() and tgt_lang.get()):
             messagebox.showerror("Error", "Please fill all fields.")
@@ -399,4 +404,4 @@ def run_gui_m2m100():
 
     root.mainloop()
 
-
+print("M2M100 GUI loaded.")

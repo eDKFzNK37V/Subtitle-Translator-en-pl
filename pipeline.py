@@ -3,8 +3,7 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import language_tool_python
-from advanced_translation import translate_lines_nllb
-from subtitle_workflow import translate_lines, model_setup
+from subtitle_workflow import translate_lines, model_setup, translate_lines_nllb
 from resources import tool_pl, tool_en
 from text_tools import (
     correct_punctuation,

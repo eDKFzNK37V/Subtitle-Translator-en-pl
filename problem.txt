@@ -165,10 +165,8 @@ def translate_with_context_nllb(
 
         # Use correct codes for this model
         trans_window = translate_lines_nllb(
-            model, tokenizer, device, window, src_code, tgt_code, batch_size=batch_size, progress_callback=None
+            model, tokenizer, device, window, src_code, tgt_code, batch_size=batch_size, progress_callback=translation_callback
         )
-
-
         offset = start - ctx_start
         batch_translated = trans_window[offset:offset + (end - start)]
 
@@ -181,8 +179,6 @@ def translate_with_context_nllb(
         if translation_callback:
             for i in range(start + 1, end + 1):
                 translation_callback(i, total)
-
-
 
     return result
 

@@ -59,6 +59,7 @@ class ProgressController:
 
 
     def _step_ui(self, steps=1):
+        import logging
         if self.total_steps <= 0 or steps <= 0:
             return
 
@@ -74,15 +75,19 @@ class ProgressController:
         rem_secs = avg_per_step * (self.total_steps - self.done_steps)
         mins, secs = divmod(int(rem_secs), 60)
 
+        logging.debug(f"[ProgressController] _step_ui: done_steps={self.done_steps}, total_steps={self.total_steps}, pct={pct:.2f}")
         self._update_ui(pct, f"{int(pct)}% | Time remaining: {mins:02d}:{secs:02d}")
 
     # ——— Translation updates (thread-safe) ———
     def update_translation_progress(self, current, total):
+        import logging
         if total <= 0:
             return
+        logging.debug(f"[ProgressController] update_translation_progress: current={current}, total={total}")
         self.root.after(0, self._do_translation_update, current, total)
 
     def _do_translation_update(self, current, total):
+        import logging
         # clamp & compute delta
         current = max(0, min(current, total))
         delta = max(0, current - self.t_current)
@@ -91,16 +96,20 @@ class ProgressController:
         pct = int((current / total) * 100) if total else 0
         self.translation_label.config(text=f"Translation: {pct}%")
 
+        logging.debug(f"[ProgressController] _do_translation_update: current={current}, total={total}, delta={delta}")
         # advance overall by delta steps
         self._step_ui(delta)
 
     # ——— Post-processing updates (thread-safe) ———
     def update_post_progress(self, current, total):
+        import logging
         if total <= 0:
             return
+        logging.debug(f"[ProgressController] update_post_progress: current={current}, total={total}")
         self.root.after(0, self._do_post_update, current, total)
 
     def _do_post_update(self, current, total):
+        import logging
         # clamp & compute delta
         current = max(0, min(current, total))
         delta = max(0, current - self.p_current)
@@ -115,7 +124,7 @@ class ProgressController:
         # ETA calculation for post-processing only
         if self.p_current > 0 and self.post_start_time > 0.0:
             elapsed = time.time() - self.post_start_time
-            avg_per_step = elapsed / self.p_current
+            avg_per_step = elapsed / max(self.p_current, 4)  # ignore first 3 steps for ETA
             rem_secs = avg_per_step * (self.p_total - self.p_current)
             mins, secs = divmod(int(rem_secs), 60)
             eta_str = f"Time remaining: {mins:02d}:{secs:02d}"
@@ -124,6 +133,7 @@ class ProgressController:
 
         self.post_label.config(text=f"Post-processing: {pct}% | {eta_str}")
 
+        logging.debug(f"[ProgressController] _do_post_update: current={current}, total={total}, delta={delta}")
         # advance overall by delta steps
         self._step_ui(delta)
 

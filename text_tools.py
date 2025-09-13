@@ -109,9 +109,26 @@ def restore_tags_from_placeholders(translated: str, ph_map):
     missing.sort(key=lambda x: x[2])
 
     offset = 0
+    import re
+
+    def find_nearest_word_boundary(text, pos):
+        # Find left and right word boundaries around pos
+        left = re.search(r'\b\w+\b', text[:pos][::-1])
+        right = re.search(r'\b\w+\b', text[pos:])
+        if left:
+            left_pos = pos - left.end()
+            return left_pos + len(left.group()), 'after'
+        elif right:
+            right_pos = pos + right.start()
+            return right_pos, 'before'
+        return pos, 'exact'
+
     for _placeholder, original, pos in missing:
-        insert_at = min(max(pos + offset, 0), len(out))
-        out = out[:insert_at] + original + out[insert_at:]
+        insert_at, direction = find_nearest_word_boundary(out, pos + offset)
+        if direction == 'before':
+            out = out[:insert_at] + original + out[insert_at:]
+        else:
+            out = out[:insert_at + len(original)] + original + out[insert_at + len(original):]
         offset += len(original)
 
     return out
@@ -170,3 +187,5 @@ def correct_punctuation_batch(texts, model_choice="kredor"):
         return [decode_one(ids_row, pred_row) for ids_row, pred_row in zip(input_ids, preds)]
     except Exception:
         return texts
+    
+
