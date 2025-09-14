@@ -1,6 +1,6 @@
 # subtitle_workflow.py
 import os
-import torch
+import re
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from utils import load_subtitle_lines, save_subtitle_lines
@@ -11,6 +11,18 @@ from text_tools import extract_tags_with_placeholders, restore_tags_from_placeho
 def run_gui_entry():
     from gui import run_gui
     run_gui()
+
+def _get_target_lang_from_code(lang_code):
+    """Convert NLLB language codes back to simple language codes for quality enhancement."""
+    code_map = {
+        "eng_Latn": "en",
+        "pol_Latn": "pl",
+        "fra_Latn": "fr", 
+        "deu_Latn": "de",
+        "jpn_Jpan": "ja"
+    }
+    return code_map.get(lang_code, "en")  # Default to English if not found
+
 ## NLLB language code map (extend as needed)
 def model_setup():
     global TRANS_MODEL, TRANS_TOKENIZER
@@ -48,9 +60,10 @@ def load_nllb_13b():
     return model, tok, device
 
 def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
-                         max_length=256, num_beams=6, no_repeat_ngram_size=3,
-                         length_penalty=1.0):
+                         max_length=256, num_beams=8, no_repeat_ngram_size=3,
+                         length_penalty=0.8, repetition_penalty=1.1):
     """
+    Enhanced NLLB translation with improved quality parameters.
     Assumes:
       - tok is the NLLB tokenizer
       - src_code/tgt_code are already in NLLB form (e.g. "eng_Latn", "pol_Latn")
@@ -67,15 +80,34 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     ).to(device)
 
     with torch.no_grad():
+        # Enhanced generation parameters for subtitle quality
         gen = model.generate(
             **enc,
             forced_bos_token_id=tgt_id,
             max_length=max_length,
-            num_beams=num_beams,
-            no_repeat_ngram_size=no_repeat_ngram_size,
-            length_penalty=length_penalty
+            num_beams=num_beams,  # Increased for better quality
+            early_stopping=True,
+            length_penalty=length_penalty,  # Slightly favor shorter, more natural text
+            no_repeat_ngram_size=no_repeat_ngram_size,  # Reduce repetition
+            do_sample=False,  # Use deterministic beam search for consistency
+            num_return_sequences=1,
+            bad_words_ids=None,
+            temperature=1.0,
+            top_k=50,
+            top_p=0.95,
+            repetition_penalty=repetition_penalty  # Slight penalty for repetition
         )
-    return tok.batch_decode(gen, skip_special_tokens=True)
+    
+    decoded = tok.batch_decode(gen, skip_special_tokens=True)
+    
+    # Apply enhanced post-processing for each translated line  
+    enhanced_results = []
+    for idx, text in enumerate(decoded):
+        # Apply immediate quality improvements
+        enhanced_text = _enhance_translation_quality(text, _get_target_lang_from_code(tgt_code), lines[idx] if idx < len(lines) else "")
+        enhanced_results.append(enhanced_text)
+    
+    return enhanced_results
 
 def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
                          batch_size=16, progress_callback=None):
@@ -109,7 +141,7 @@ def translate_with_context_nllb(
     model,
     tokenizer,
     device,
-    beams=6,
+    beams=8,
     batch_size=16,
     polish_only=False,
     glossary=None,
@@ -172,25 +204,25 @@ def translate_with_context_nllb(
     # Split grouped translations back to original lines
     split_lines = split_grouped_translations(restored_groups, group_map)
 
-    if translation_callback:
-        for i in range(1, total + 1):
-            translation_callback(i, total)
+    # Final progress update only if we haven't reached the end yet
+    if translation_callback and len(grouped_clean) > 0:
+        translation_callback(len(grouped_clean), len(grouped_clean))
 
     return split_lines
 
 def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None):
-    model_setup()
-    from pipeline import apply_glossary, GLOSSARY
-    stripped, ph_maps = [], []
-    for line in lines:
-        clean, ph_map = extract_tags_with_placeholders(line)
-        clean = apply_glossary(clean, glossary)
-        stripped.append(clean)
-        ph_maps.append(ph_map)
-
-    model, tok, device = load_nllb_13b()
-    translated = translate_lines_nllb(model, tok, device, stripped, src_lang, tgt_lang, progress_callback=translation_callback)
-    return [restore_tags_from_placeholders(translated[i], ph_maps[i]) for i in range(len(translated))]
+    """
+    Enhanced NLLB correction using the comprehensive correction pipeline from pipeline.py
+    """
+    from pipeline import correct_text_batch
+    
+    # Use the enhanced correction pipeline with NLLB model setup
+    model_setup()  # Ensure NLLB model is loaded
+    
+    # Apply the enhanced correction pipeline
+    corrected_lines = correct_text_batch(lines, tgt_lang, translation_callback)
+    
+    return corrected_lines
 
 
 
@@ -323,8 +355,15 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
     model_type = "nllb" if hasattr(TRANS_TOKENIZER, "lang_code_to_token") and hasattr(TRANS_TOKENIZER, "set_src_lang_special_tokens") else "m2m100"
     src_code = get_model_lang_code(src_lang, model_type)
     tgt_code = get_model_lang_code(tgt_lang, model_type)
-    TRANS_TOKENIZER.src_lang = src_code
-    bos_token_id = lambda lang: TRANS_TOKENIZER.get_lang_id(get_model_lang_code(lang, model_type))
+    
+    # Setup tokenizer based on model type
+    if model_type == "nllb":
+        TRANS_TOKENIZER.src_lang = src_code
+        tgt_id = TRANS_TOKENIZER.convert_tokens_to_ids(tgt_code)
+        bos_token_id = tgt_id
+    else:
+        TRANS_TOKENIZER.src_lang = src_code
+        bos_token_id = TRANS_TOKENIZER.get_lang_id(get_model_lang_code(tgt_lang, model_type))
 
     for i in range(0, total_lines, batch_size):
         batch = lines[i: i + batch_size]
@@ -337,22 +376,40 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
 
         with torch.no_grad():
             # Enhanced generation parameters for subtitle quality
-            outputs = TRANS_MODEL.generate(
-                **encoded,
-                forced_bos_token_id=bos_token_id(tgt_lang),
-                max_length=256,
-                num_beams=8,  # Increased for better quality
-                early_stopping=True,
-                length_penalty=0.8,  # Slightly favor shorter, more natural text
-                no_repeat_ngram_size=3,  # Reduce repetition
-                do_sample=False,  # Use deterministic beam search for consistency
-                num_return_sequences=1,
-                bad_words_ids=None,
-                temperature=1.0,
-                top_k=50,
-                top_p=0.95,
-                repetition_penalty=1.1  # Slight penalty for repetition
-            )
+            if model_type == "nllb":
+                outputs = TRANS_MODEL.generate(
+                    **encoded,
+                    forced_bos_token_id=bos_token_id,
+                    max_length=256,
+                    num_beams=8,  # Increased for better quality
+                    early_stopping=True,
+                    length_penalty=0.8,  # Slightly favor shorter, more natural text
+                    no_repeat_ngram_size=3,  # Reduce repetition
+                    do_sample=False,  # Use deterministic beam search for consistency
+                    num_return_sequences=1,
+                    bad_words_ids=None,
+                    temperature=1.0,
+                    top_k=50,
+                    top_p=0.95,
+                    repetition_penalty=1.1  # Slight penalty for repetition
+                )
+            else:
+                outputs = TRANS_MODEL.generate(
+                    **encoded,
+                    forced_bos_token_id=bos_token_id,
+                    max_length=256,
+                    num_beams=8,  # Increased for better quality
+                    early_stopping=True,
+                    length_penalty=0.8,  # Slightly favor shorter, more natural text
+                    no_repeat_ngram_size=3,  # Reduce repetition
+                    do_sample=False,  # Use deterministic beam search for consistency
+                    num_return_sequences=1,
+                    bad_words_ids=None,
+                    temperature=1.0,
+                    top_k=50,
+                    top_p=0.95,
+                    repetition_penalty=1.1  # Slight penalty for repetition
+                )
 
         decoded = TRANS_TOKENIZER.batch_decode(outputs, skip_special_tokens=True)
 

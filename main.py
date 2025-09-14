@@ -60,15 +60,20 @@ def main():
         print("No subtitle lines found.")
         return
 
-    # Translate
-    translated = translate_with_context_nllb(
-        lines,
-        args.src,
-        args.tgt,
-        model,
-        tokenizer,
-        device
-    )
+    # Translate using the appropriate function based on engine
+    if args.engine == "nllb":
+        translated = translate_with_context_nllb(
+            lines,
+            args.src,
+            args.tgt,
+            model,
+            tokenizer,
+            device
+        )
+    else:
+        # Use the enhanced translate_batch for M2M100
+        from subtitle_workflow import translate_lines
+        translated = translate_lines(lines, args.src, args.tgt)
     base, ext = args.input_file.rsplit('.', 1)
     output_path = f"{base}_{args.tgt}.{ext}"
     save_subtitle_lines(translated, output_path, subs, idx_map)
