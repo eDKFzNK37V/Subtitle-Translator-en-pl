@@ -158,6 +158,15 @@ def correct_text_batch(lines, lang, progress_callback=None):
     # Split grouped corrections back to original lines
     split_lines = split_grouped_translations(grouped_corrected, group_map)
 
+    # Log corrections for analysis if any changes were made
+    try:
+        from logs import accumulate_correction_data
+        changed_pairs = [(orig, corr) for orig, corr in zip(lines, split_lines) if orig != corr]
+        if changed_pairs:  # Only log if there were actual changes
+            accumulate_correction_data(lines, split_lines)
+    except Exception:
+        pass  # Don't fail on logging errors
+
     # Progress callback for each line
     if progress_callback:
         for idx in range(1, total + 1):

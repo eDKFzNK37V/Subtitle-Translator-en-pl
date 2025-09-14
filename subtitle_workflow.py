@@ -264,6 +264,13 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     model_setup()  # Ensure correct model/tokenizer is set
     from pipeline import apply_glossary, GLOSSARY
     from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, insert_newline_tags_contextaware, group_dialogue_lines, split_grouped_translations
+    from logs import initialize_session_log
+
+    # Initialize session logging at the start with output directory
+    ext = file_path.split('.')[-1].lower()
+    output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
+    output_dir = os.path.dirname(output_path)
+    initialize_session_log(output_dir)
 
     texts, subs, idx_map = load_subtitle_lines(file_path)
     if not texts:
@@ -324,16 +331,10 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
             processed_line = line
         final_lines.append(processed_line)
 
-    ext = file_path.split('.')[-1].lower()
-    output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
     save_subtitle_lines(final_lines, output_path, subs, idx_map)
 
-
-    # Write session log at the end of translation in the output directory
-    from logs import write_session_log, initialize_session_log
-    import os
-    output_dir = os.path.dirname(output_path)
-    initialize_session_log(output_dir)
+    # Write session log at the end of translation
+    from logs import write_session_log
     write_session_log()
 
     return output_path, texts, final_lines
