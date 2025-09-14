@@ -23,7 +23,7 @@ class ProgressController:
     def start(self, translation_lines):
         # Use actual translation line count and estimate post-processing
         self.t_total = translation_lines
-        self.p_total = translation_lines  # Estimate post-processing as equal to translation
+        self.p_total = translation_lines  # Estimate post-processing as same number of lines
         self.total_steps = self.t_total + self.p_total  # Include both phases from start
         self.done_steps = 0
         self.t_current = 0
@@ -38,31 +38,19 @@ class ProgressController:
 
     def set_post_total(self, post_total):
         """
-        Update the actual post-processing total, replacing the initial estimate.
+        Set the number of post-processing steps and update total_steps accordingly.
         """
         post_total = max(0, int(post_total))
-        old_p_total = self.p_total
         self.p_total = post_total
         self.total_steps = self.t_total + self.p_total
-        
-        # If the post-processing total changed significantly from our estimate,
-        # adjust done_steps proportionally to maintain smooth progress
-        if old_p_total != self.p_total and old_p_total > 0:
-            old_total = self.t_total + old_p_total
-            if old_total > 0:
-                # Maintain the same proportion of work completed
-                progress_ratio = self.done_steps / old_total
-                self.done_steps = int(progress_ratio * self.total_steps)
-        
-        # Clamp done_steps if we've overshot
+        # Clamp done_steps if we’ve overshot
         if self.done_steps > self.total_steps:
             self.done_steps = self.total_steps
-            
-        # Update UI to reflect current progress
+        # Refresh the status line
         pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
-        self.progress_var.set(pct)
         self._update_ui(int(pct), f"{int(pct)}% | Time remaining: --:--")
         self.post_start_time = 0.0
+
 
     # In progress_controller.py
     def _step_ui(self, steps=1):
@@ -135,15 +123,17 @@ class ProgressController:
         self._step_ui(delta)
 
     def show_post_start(self):
-        # Don't change done_steps or total_steps here - they're already correct
-        # Just update the UI to show post-processing has started
+        # Ensure done_steps reflects translation completion
+        self.done_steps = self.t_total
+        # Don't recalculate total_steps here - it's already set by set_post_total()
+        # Just ensure we maintain current progress without jumping back
+        pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
+        self.progress_var.set(pct)
         self.post_start_time = 0.0
         # Clear or update translation label when post-processing starts
         self.translation_label.config(text="Translation: complete")
         self.post_label.config(text="Post-processing: 0%")
-        # Keep current progress - don't recalculate
-        current_pct = self.progress_var.get()
-        self._update_ui(current_pct, f"{int(current_pct)}% | Post-processing starting...")
+        self._update_ui(pct, f"{int(pct)}% | Post-processing starting...")
 
     def reset_ui(self):
         self.progress_var.set(0)
