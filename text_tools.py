@@ -829,8 +829,6 @@ def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
         # Only most essential Polish formality patterns to prevent over-correction
         formal_patterns = [
             # Only the most basic and safe formality fixes
-            (r'\bchciałbym\s+ci\s+powiedzieć\b', 'powiem ci'),
-            (r'\bmam\s+nadzieję,?\s*że\b', 'mam nadzieję, że'),
             (r'\bproszę\s+o\s+wybaczenie\b', 'przepraszam'),
             (r'\bw\s+chwili\s+obecnej\b', 'teraz'),
             (r'\bobecnie\b', 'teraz'),
@@ -889,7 +887,6 @@ def fix_common_translation_issues(text: str, target_lang: str = "pl") -> str:
             (r'\bmam\s+nadzieję\s+na\s+to\b', 'mam nadzieję'),
             (r'\bjest\s+to\s+([a-ząćęłńóśźż]+)\b', r'to \1'),
             (r'\bteraz\s+w\s+tym\s+momencie\b', 'teraz'),
-            (r'\bobecnie\s+w\s+tym\s+czasie\b', 'teraz'),
         ]
     else:
         # Conservative English translation fixes - only essential patterns
