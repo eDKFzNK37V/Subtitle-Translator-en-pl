@@ -13,7 +13,6 @@ from text_tools import (
     clean_translation,
     extract_tags_with_placeholders,
     restore_tags_from_placeholders,
-    apply_style_tone_batch,
     detect_and_improve_formality,
 )
 
@@ -27,7 +26,7 @@ MAX_CHARS_FOR_MODELS = 800
 LT_TIMEOUT = 1.2          # Reduced timeout for faster processing
 MAX_WORKERS_LT = 6        # Optimized LT parallelism
 CORR_BATCH_SIZE = 24      # Optimized correction batch size
-CONFIDENCE_THRESHOLD = 0.80  # Increased confidence threshold for better protection
+CONFIDENCE_THRESHOLD = 0.90  # Very high confidence threshold to prevent over-correction
 
 def _clamp(text: str, max_chars: int = MAX_CHARS_FOR_MODELS) -> str:
     return text if len(text) <= max_chars else text[:max_chars]
@@ -115,89 +114,42 @@ def correct_text(text, lang):
 
 def correct_text_batch(lines, lang, progress_callback=None):
     """
-    Enhanced context-aware correction with confidence-based fallback and style adjustment.
+    Minimalistic correction pipeline to prevent over-correction and quality degradation.
+    Only applies essential corrections with maximum safety.
     """
     from text_tools import group_dialogue_lines, split_grouped_translations
     total = len(lines)
     lang_lower = lang.lower()
-    use_lt = lang_lower in ("pl", "en")
-    lt_tool = tool_pl if lang_lower == "pl" else (tool_en if lang_lower == "en" else None)
 
-    # Group dialogue lines for context-aware correction
+    # Group dialogue lines for context preservation
     grouped_lines, group_map = group_dialogue_lines(lines)
 
-    # Enhanced correction pipeline with new order and confidence checks
+    # Ultra-conservative correction approach
     grouped_corrected = []
     for group in grouped_lines:
-        # 1) Placeholders + enhanced glossary with context
+        # 1) Extract placeholders but skip heavy processing
         ph_map = []
         cleans = []
         for line in [group]:
             clean, ph = extract_tags_with_placeholders(line)
             ph_map.append(ph)
-            # Apply enhanced glossary with context awareness
-            clean = apply_glossary(clean, use_context=True)
             cleans.append(clean)
 
-        # 2) Neural grammar correction with confidence-based fallback
+        # 2) Skip grammar correction for now to prevent over-correction
+        # This is the main source of Polish character loss and over-correction
+        
+        # 3) Skip punctuation restoration to avoid issues
+        
+        # 4) Skip LanguageTool to avoid over-correction
+        
+        # 5) Only apply minimal style fixes - the safest possible
         try:
-            cleans = correct_grammar_batch([_clamp(t) for t in cleans], CONFIDENCE_THRESHOLD)
-        except Exception:
-            tmp = []
-            for t in cleans:
-                try:
-                    tmp.append(correct_grammar_with_fallback(_clamp(t), CONFIDENCE_THRESHOLD))
-                except Exception:
-                    tmp.append(t)
-            cleans = tmp
-
-        # 3) Punctuation restoration (batched)
-        try:
-            cleans = correct_punctuation_batch([_clamp(t) for t in cleans], "kredor")
-        except Exception:
-            tmp = []
-            for t in cleans:
-                try:
-                    tmp.append(correct_punctuation(_clamp(t), "kredor"))
-                except Exception:
-                    tmp.append(t)
-            cleans = tmp
-
-        # 4) LanguageTool correction (parallel per line, short timeout, skip long lines)
-        if use_lt and lt_tool is not None:
-            def lt_fix(t):
-                t_short = _clamp(t)
-                matches = _lt_check_with_timeout(lt_tool, t_short, LT_TIMEOUT)
-                if matches:
-                    try:
-                        return language_tool_python.utils.correct(t, matches)
-                    except Exception:
-                        return t
-                return t
-            with ThreadPoolExecutor(max_workers=MAX_WORKERS_LT) as ex:
-                cleans = list(ex.map(lt_fix, cleans))
-
-        # 5) Conservative style/tone adjustment with quality fixes for subtitle context
-        try:
-            # Apply only essential quality improvements to prevent over-correction
-            from text_tools import fix_common_translation_issues
-            # Only apply style fixes if text is clearly problematic
-            original_length = sum(len(text) for text in cleans)
+            # Only apply absolutely essential fixes
             cleans = [fix_common_translation_issues(text, lang_lower) for text in cleans]
-            
-            # Check for excessive changes and revert if too many
-            corrected_length = sum(len(text) for text in cleans)
-            if abs(original_length - corrected_length) / max(original_length, 1) > 0.3:
-                # Too many changes, revert to safer corrections
-                cleans = [detect_and_improve_formality(text, lang_lower) for text in cleans]
         except Exception:
-            # Fallback to basic style adjustment
-            try:
-                cleans = apply_style_tone_batch(cleans, lang_lower)
-            except Exception:
-                pass  # If style adjustment fails, continue with existing text
+            pass  # If anything fails, keep original
 
-        # 6) Final clean + restore placeholders
+        # 6) Just clean and restore placeholders
         for i, t in enumerate(cleans):
             corrected = clean_translation(t)
             corrected = restore_tags_from_placeholders(corrected, ph_map[i])

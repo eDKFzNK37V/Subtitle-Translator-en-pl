@@ -148,24 +148,21 @@ def validate_name_preservation(original: str, corrected: str) -> bool:
     preservation_rate = preserved_names / len(original_names) if original_names else 1.0
     return preservation_rate >= 0.8
 
-def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.75) -> str:
+def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.85) -> str:
     """
-    Ultra-conservative grammar correction with comprehensive Polish character and name protection.
-    Enhanced validation to prevent any character loss or corruption.
+    Ultra-conservative grammar correction with minimal processing to prevent over-correction.
+    Only applies corrections that are absolutely safe and necessary.
     """
-    if not text.strip():
+    if not text.strip() or len(text.strip()) < 8:  # Skip very short texts
         return text
         
-    # Pre-correction analysis
-    original_char_count = count_polish_characters(text)
+    # Pre-correction analysis - track Polish characters precisely
+    original_polish_chars = count_polish_characters(text)
     original_names = detect_proper_names(text)
-    has_polish_chars = sum(original_char_count.values()) > 0
+    total_polish_chars = sum(original_polish_chars.values())
     
-    # Use very high confidence threshold for Polish text
-    effective_threshold = confidence_threshold + 0.15 if has_polish_chars else confidence_threshold
-    
-    # Skip correction for very short text to avoid corruption
-    if len(text.strip()) < 5:
+    # Skip correction for text with many Polish characters to prevent corruption
+    if total_polish_chars > len(text) * 0.2:  # More than 20% Polish characters
         return text
     
     try:
@@ -173,32 +170,32 @@ def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.75)
     except Exception:
         return text  # Return original on any error
     
-    # Comprehensive validation checks
-    validation_passed = True
+    # Ultra-strict validation - reject most corrections
     
-    # 1. Character preservation check (95% minimum)
-    if not validate_character_preservation(text, corrected, 0.95):
-        validation_passed = False
+    # 1. Confidence must be very high
+    if confidence < confidence_threshold:
+        return text
     
-    # 2. Name preservation check
-    if not validate_name_preservation(text, corrected):
-        validation_passed = False
+    # 2. Perfect Polish character preservation required
+    if total_polish_chars > 0:
+        if not validate_character_preservation(text, corrected, 1.0):  # 100% preservation
+            return text
     
-    # 3. Length change check (reject excessive changes)
+    # 3. Perfect name preservation required
+    if original_names:
+        if not validate_name_preservation(text, corrected):
+            return text
+    
+    # 4. Length change must be minimal (less than 10%)
     length_change_ratio = abs(len(text) - len(corrected)) / max(len(text), 1)
-    if length_change_ratio > 0.25:  # More than 25% length change
-        validation_passed = False
+    if length_change_ratio > 0.1:
+        return text
     
-    # 4. Confidence check
-    if confidence < effective_threshold:
-        validation_passed = False
-    
-    # 5. Additional safety: check for corrupted output
-    if len(corrected.strip()) < len(text.strip()) * 0.7:  # Lost more than 30% of content
-        validation_passed = False
-    
-    # Return original if any validation fails
-    if not validation_passed:
+    # 5. No significant word loss
+    original_words = set(re.findall(r'\b\w+\b', text.lower()))
+    corrected_words = set(re.findall(r'\b\w+\b', corrected.lower()))
+    word_loss_ratio = len(original_words - corrected_words) / max(len(original_words), 1)
+    if word_loss_ratio > 0.05:  # Lost more than 5% of words
         return text
     
     return corrected
@@ -231,23 +228,7 @@ def group_dialogue_lines(lines: List[str]) -> Tuple[List[str], List[List[int]]]:
         grouped_lines: List of joined lines for translation
         mapping: List of lists, each sublist contains the original line indices for each group
     """
-    # Essential patterns for performance (reduced set)
-    IDIOM_PATTERNS = [
-        r'\b(in order to|as well as|not only|but also)\b',
-        r'\b(on the other hand|at the same time)\b',
-    ]
-    
-    # Streamlined patterns for better performance
-    CONTINUATION_PATTERNS = [
-        r'^(and|but|or|so|then)\s',  # Most common connectors
-        r'^[a-z]',  # lowercase start (original logic)
-    ]
-    
-    # Essential break patterns
-    BREAK_PATTERNS = [
-        r'[.!?]\s*$',  # ends with sentence-ending punctuation
-        r':\s*$',      # ends with colon
-    ]
+    # Note: Pattern variables removed as they were not being used in the logic
     
     def should_continue_group(prev_line: str, curr_line: str) -> bool:
         """
@@ -454,10 +435,6 @@ def insert_newline_tags_contextaware(text: str, n_tags: int, prefer_punctuation:
 def restore_tags(translated, tags):
     return "".join(tags) + translated
 
-def correct_text_pipeline(text, lang):
-    text = correct_grammar(text)
-    text = correct_punctuation(text)
-    return clean_translation(text)
 
 # Optional: strip all tags and escapes permanently
 def strip_subtitle_tags(text: str) -> str:
@@ -592,90 +569,29 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
 # Session logging has been moved to logs.py
 from logs import accumulate_correction_data, log_names_and_unknown_words
 
-def correct_grammar_batch(texts, confidence_threshold: float = 0.75, enable_logging: bool = True):
+def correct_grammar_batch(texts, confidence_threshold: float = 0.85, enable_logging: bool = True):
     """
-    Ultra-conservative batched grammar correction with comprehensive character protection.
-    Enhanced protection against Polish character loss and name corruption.
+    Minimalistic batched grammar correction to prevent over-correction and character loss.
+    Only applies safe, essential corrections with strict validation.
     """
-    # Pre-filter very short texts to avoid corruption
-    filtered_inputs = []
-    filtered_indices = []
+    # Skip processing for texts that are likely to be corrupted
     results = []
     
-    for i, text in enumerate(texts):
-        if len(text.strip()) < 5:
-            results.append(text)  # Keep very short texts unchanged
-        else:
-            filtered_inputs.append(text)
-            filtered_indices.append(i)
-            results.append(None)  # Placeholder
+    for text in texts:
+        # Apply individual correction with ultra-conservative approach
+        corrected = correct_grammar_with_fallback(text, confidence_threshold)
+        results.append(corrected)
     
-    if not filtered_inputs:
-        return results
-    
-    try:
-        inputs = GRAMMAR_TOKENIZER(
-            ["gec: " + t for t in filtered_inputs],
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=200
-        ).to(DEVICE)
-        
-        with torch.no_grad():
-            outputs = GRAMMAR_MODEL.generate(
-                inputs.input_ids, 
-                attention_mask=inputs.attention_mask,
-                max_length=200,
-                num_beams=3,
-                early_stopping=True,
-                output_scores=True,
-                return_dict_in_generate=True,
-                no_repeat_ngram_size=2
-            )
-        
-        corrected_texts = GRAMMAR_TOKENIZER.batch_decode(outputs.sequences, skip_special_tokens=True)
-        
-        # Apply comprehensive validation for each correction
-        for j, (original, corrected) in enumerate(zip(filtered_inputs, corrected_texts)):
-            original_index = filtered_indices[j]
-            
-            # Use the comprehensive validation function
-            validation_passed = True
-            
-            # 1. Character preservation check
-            if not validate_character_preservation(original, corrected, 0.95):
-                validation_passed = False
-            
-            # 2. Name preservation check
-            if not validate_name_preservation(original, corrected):
-                validation_passed = False
-            
-            # 3. Length and confidence checks
-            length_change_ratio = abs(len(original) - len(corrected)) / max(len(original), 1)
-            if length_change_ratio > 0.25:
-                validation_passed = False
-            
-            # 4. Content preservation check
-            if len(corrected.strip()) < len(original.strip()) * 0.7:
-                validation_passed = False
-            
-            # Use corrected text only if all validations pass
-            if validation_passed:
-                results[original_index] = corrected
-            else:
-                results[original_index] = original
-        
-        # Log names and problematic corrections if enabled
-        if enable_logging:
-            try:
+    # Log names and problematic corrections if enabled (but be very conservative)
+    if enable_logging:
+        try:
+            changed_pairs = [(orig, corr) for orig, corr in zip(texts, results) if orig != corr]
+            if changed_pairs:  # Only log if there were actual changes
                 log_names_and_unknown_words(texts, results)
-            except Exception:
-                pass  # Don't fail on logging errors
-        
-        return results
-    except Exception:
-        return texts
+        except Exception:
+            pass  # Don't fail on logging errors
+    
+    return results
 
 def correct_punctuation_batch(texts, model_choice="kredor"):
     """
@@ -717,368 +633,77 @@ def correct_punctuation_batch(texts, model_choice="kredor"):
 
 def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
     """
-    Enhanced subtitle style and tone adjustment with comprehensive pattern detection.
-    
-    Subtitle-specific adjustments:
-    - Shorter, more concise phrasing
-    - More natural, conversational tone
-    - Removal of overly formal language
-    - Cultural adaptation for target language
-    - Advanced awkward construction detection
+    Minimal subtitle style adjustment - only essential, safe changes.
+    Prevents over-correction that was causing translation quality issues.
     """
     if not text.strip():
         return text
     
-    # Define style adjustments for different languages
+    adjusted = text
+    
+    # Only the most essential and safe adjustments
     if target_lang.lower() == "pl":
-        # Comprehensive Polish subtitle style adjustments
-        adjustments = [
-            # Remove overly formal constructions
-            (r'\bchciałbym\s+powiedzieć,?\s*że\b', 'chcę powiedzieć, że'),
-            (r'\bmuszę\s+przyznać,?\s*że\b', 'przyznaję, że'),
-            (r'\bbyłbym\s+bardzo\s+wdzięczny\b', 'bardzo by mi to pomogło'),
-            (r'\bwydaje\s+mi\s+się,?\s*że\b', 'myślę, że'),
-            (r'\bobawiam\s+się,?\s*że\b', 'niestety'),
-            (r'\bbyć\s+może\s+powinniśmy\b', 'może powinniśmy'),
-            (r'\bpragnę\s+aby\b', 'chcę żeby'),
-            (r'\bżyczę\s+sobie\b', 'chcę'),
-            (r'\bmam\s+zamiar\b', 'zamierzam'),
-            (r'\bpozwolę\s+sobie\b', 'pozwolę'),
-            
-            # Enhanced awkward construction fixes
-            (r'\bw\s+tym\s+momencie\s+jestem\b', 'teraz jestem'),
-            (r'\bw\s+chwili\s+obecnej\s+znajduję\s+się\b', 'teraz jestem'),
-            (r'\baktualnie\s+wykonuję\s+czynność\b', 'robię'),
-            (r'\bobecnie\s+zajmuję\s+się\b', 'zajmuję się'),
-            (r'\bw\s+tej\s+chwili\s+mam\s+do\s+czynienia\b', 'mam do czynienia'),
-            
-            # Simplify complex phrases
-            (r'\bw\s+związku\s+z\s+tym\b', 'dlatego'),
-            (r'\bw\s+rezultacie\b', 'w wyniku'),
-            (r'\bw\s+konsekwencji\b', 'przez to'),
-            (r'\bw\s+celu\s+ukończenia\b', 'żeby ukończyć'),
-            (r'\bw\s+celu\s+([a-ząćęłńóśźż\s]+)\b', r'żeby \1'),
-            (r'\bz\s+powodu\s+tego,?\s*że\b', 'bo'),
-            (r'\bna\s+skutek\s+tego\b', 'przez to'),
-            (r'\bz\s+uwagi\s+na\s+to,?\s*że\b', 'bo'),
-            (r'\bjeśli\s+chodzi\s+o\b', 'co do'),
-            (r'\bw\s+odniesieniu\s+do\b', 'co do'),
-            (r'\bw\s+kontekście\b', 'co do'),
-            
-            # Make more natural for speech
-            (r'\bale\s+jednak\b', 'ale'),
-            (r'\bjednak\s+jednak\b', 'jednak'),
-            (r'\bprawda\s+jest\s+taka,?\s*że\b', 'prawda jest, że'),
-            (r'\bproduktów\s+spożywczych\b', 'jedzenia'),
-            (r'\bartykułów\s+żywnościowych\b', 'jedzenia'),
-            (r'\bśrodków\s+czystości\b', 'detergentów'),
-            
-            # Enhanced conversational replacements
-            (r'\bna\s+pewno\b', 'pewnie'),
-            (r'\bprawdopodobnie\b', 'pewnie'),
-            (r'\bzupełnie\s+nie\b', 'wcale nie'),
-            (r'\bbardzo\s+dziękuję\b', 'dzięki'),
-            (r'\bdzięki\s+bardzo\b', 'dzięki'),
-            (r'\bjestem\s+wdzięczny\b', 'dzięki'),
-            (r'\bjest\s+mi\s+bardzo\s+miło\b', 'miło mi'),
-            
-            # Time expression improvements
-            (r'\bw\s+najbliższym\s+czasie\b', 'niedługo'),
-            (r'\bw\s+przyszłości\b', 'później'),
-            (r'\bw\s+przeszłości\b', 'wcześniej'),
-            (r'\bobecnie\b', 'teraz'),
-            (r'\baktualnie\b', 'teraz'),
-            (r'\bw\s+tym\s+momencie\b', 'teraz'),
-            
-            # Verb form simplifications
-            (r'\bzostanie\s+wykonane\b', 'zrobimy to'),
-            (r'\bbędzie\s+realizowane\b', 'zrobimy'),
-            (r'\buzostanie\s+ukończone\b', 'ukończymy'),
-            (r'\bmieć\s+miejsce\b', 'się wydarzyć'),
-            (r'\bodbywa\s+się\b', 'dzieje się'),
-            (r'\bdokonuje\s+się\b', 'dzieje się'),
+        # Minimal Polish adjustments - only very safe patterns
+        safe_adjustments = [
+            (r'\bja jestem\b', 'jestem'),  # Remove redundant "ja"
+            (r'\btak,\s*tak\b', 'tak'),    # Remove duplication
+            (r'\bnie,\s*nie\b', 'nie'),    # Remove duplication
         ]
     else:
-        # Enhanced English subtitle style adjustments
-        adjustments = [
-            # Enhanced contractions
-            (r"\bI am\b(?!\s+going\s+to)", "I'm"),
-            (r"\byou are\b", "you're"),
-            (r"\bwe are\b", "we're"),
-            (r"\bthey are\b", "they're"),
-            (r"\bhe is\b", "he's"),
-            (r"\bshe is\b", "she's"),
-            (r"\bit is\b(?!\s+important)", "it's"),
-            (r"\bthere is\b", "there's"),
-            (r"\bthat is\b", "that's"),
-            (r"\bwould have\b", "would've"),
-            (r"\bcould have\b", "could've"),
-            (r"\bshould have\b", "should've"),
-            (r"\bmight have\b", "might've"),
-            (r"\bmust have\b", "must've"),
-            
-            # Convert formal expressions to conversational
-            (r"\bI would like to\b", "I'd like to"),
-            (r"\bI would be very grateful if\b", "I'd really appreciate if"),
-            (r"\bIt is important that\b", "You need to"),
-            (r"\bI am afraid that\b", "I'm afraid"),
-            (r"\bPerhaps we should\b", "Maybe we should"),
-            (r"\bIt seems to me that\b", "I think"),
-            (r"\bI would suggest that\b", "I think"),
-            (r"\bI would recommend that\b", "I'd say"),
-            (r"\bI believe it would be best if\b", "I think you should"),
-            
-            # Enhanced awkward construction fixes
-            (r"\bAt this point in time I am\b", "I'm now"),
-            (r"\bIn this moment I find myself\b", "I'm now"),
-            (r"\bCurrently I am engaged in\b", "I'm doing"),
-            (r"\bPresently I am involved in\b", "I'm doing"),
-            (r"\bAt the present time I have\b", "I now have"),
-            
-            # Make more conversational
-            (r"\bI'm going to\b", "I'll"),
-            (r"\bdo not\b", "don't"),
-            (r"\bcannot\b", "can't"),
-            (r"\bwill not\b", "won't"),
-            (r"\bshall not\b", "won't"),
-            (r"\bmust not\b", "can't"),
-            (r"\bshould not\b", "shouldn't"),
-            (r"\bwould not\b", "wouldn't"),
-            (r"\bcould not\b", "couldn't"),
-            (r"\bmight not\b", "might not"),
-            
-            # Remove unnecessary filler
-            (r'\bwell,?\s+', ''),
-            (r'\buh,?\s+', ''),
-            (r'\bum,?\s+', ''),
-            (r'\byou know,?\s+', ''),
-            (r'\blike,?\s+', ''),
-            (r'\bso,?\s+anyway,?\s+', ''),
-            
-            # Enhanced formal phrase simplifications
-            (r'\bin order to\b', 'to'),
-            (r'\bdue to the fact that\b', 'because'),
-            (r'\bfor the reason that\b', 'because'),
-            (r'\bby means of\b', 'using'),
-            (r'\bwith regard to\b', 'about'),
-            (r'\bin the event that\b', 'if'),
-            (r'\bfor the purpose of\b', 'to'),
-            (r'\bin connection with\b', 'about'),
-            (r'\bwith respect to\b', 'about'),
-            (r'\bconcerning the matter of\b', 'about'),
-            
-            # Enhanced alternatives for common phrases
-            (r'\ba large number of\b', 'many'),
-            (r'\ba great deal of\b', 'lots of'),
-            (r'\bat this point in time\b', 'now'),
-            (r'\bin the near future\b', 'soon'),
-            (r'\bmake an attempt to\b', 'try to'),
-            (r'\bgive consideration to\b', 'consider'),
-            (r'\btake into account\b', 'consider'),
-            (r'\bcome to the conclusion\b', 'conclude'),
-            (r'\bmake a decision\b', 'decide'),
-            (r'\bgive assistance to\b', 'help'),
-            (r'\bprovide assistance to\b', 'help'),
-            
-            # Time expression improvements
-            (r'\bin the past\b', 'before'),
-            (r'\bin the future\b', 'later'),
-            (r'\bat the present time\b', 'now'),
-            (r'\bcurrently\b', 'now'),
-            (r'\bpresently\b', 'now'),
-            (r'\bat this moment\b', 'now'),
-            
-            # Passive voice to active simplifications
-            (r'\bwill be completed by\b', 'will finish'),
-            (r'\bis being done by\b', 'is doing'),
-            (r'\bwas performed by\b', 'did'),
-            (r'\bwill be handled by\b', 'will handle'),
-            (r'\bis being managed by\b', 'is managing'),
+        # Minimal English adjustments - only essential contractions
+        safe_adjustments = [
+            (r'\bI will\b', "I'll"),
+            (r'\byou will\b', "you'll"),
+            (r'\bdo not\b', "don't"),
+            (r'\bcannot\b', "can't"),
         ]
     
-    adjusted = text
-    for pattern, replacement in adjustments:
-        adjusted = re.sub(pattern, replacement, adjusted, flags=re.IGNORECASE)
+    # Apply only if Polish character preservation is guaranteed
+    original_polish_chars = count_polish_characters(adjusted)
     
-    # General subtitle optimizations
-    adjusted = _optimize_for_subtitles(adjusted)
+    for pattern, replacement in safe_adjustments:
+        test_result = re.sub(pattern, replacement, adjusted, flags=re.IGNORECASE)
+        
+        # Validate Polish character preservation
+        if target_lang.lower() == "pl":
+            if validate_character_preservation(adjusted, test_result, 1.0):
+                adjusted = test_result
+        else:
+            adjusted = test_result
+    
+    # Only essential formatting fixes
+    adjusted = re.sub(r'\s{2,}', ' ', adjusted)  # Multiple spaces
+    adjusted = re.sub(r'\s+([.!?,:;])', r'\1', adjusted)  # Space before punctuation
     
     return adjusted.strip()
 
-def _optimize_for_subtitles(text: str) -> str:
-    """
-    Apply general subtitle optimizations.
-    """
-    # Remove redundant punctuation
-    text = re.sub(r'[.]{2,}', '...', text)  # Normalize ellipsis
-    text = re.sub(r'[!]{2,}', '!', text)    # Single exclamation
-    text = re.sub(r'[?]{2,}', '?', text)    # Single question mark
-    
-    # Fix spacing issues
-    text = re.sub(r'\s+', ' ', text)        # Multiple spaces to single
-    text = re.sub(r'\s+([.!?,:;])', r'\1', text)  # Remove space before punctuation
-    text = re.sub(r'([.!?])\s*([.!?])', r'\1', text)  # Remove duplicate punctuation
-    
-    # Handle common formatting issues
-    text = re.sub(r'\s*-\s*', ' - ', text)  # Normalize dashes
-    text = re.sub(r'"\s*([^"]*)\s*"', r'"\1"', text)  # Fix quote spacing
-    text = re.sub(r"'\s*([^']*)\s*'", r"'\1'", text)  # Fix single quote spacing
-    
-    # Ensure proper capitalization after sentence breaks
-    def capitalize_after_sentence(match):
-        return match.group(1) + match.group(2).upper()
-    
-    text = re.sub(r'([.!?]\s+)([a-z])', capitalize_after_sentence, text)
-    
-    # Fix capitalization at the beginning
-    if text and text[0].islower():
-        text = text[0].upper() + text[1:]
-    
-    return text.strip()
 
-def apply_style_tone_batch(texts: List[str], target_lang: str = "pl") -> List[str]:
-    """
-    Apply style and tone adjustments to a batch of texts with enhanced conversational patterns.
-    """
-    return [adjust_subtitle_style_tone(text, target_lang) for text in texts]
+
+
 
 def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
     """
-    Ultra-conservative formality detection with comprehensive Polish character protection.
-    Includes name preservation and strict validation.
+    Minimal formality improvement - only essential changes to prevent over-correction.
     """
     if not text.strip():
         return text
     
-    # Pre-analysis
-    original_char_count = count_polish_characters(text)
-    original_names = detect_proper_names(text)
-    
-    # Apply standard style adjustments first
-    improved = adjust_subtitle_style_tone(text, target_lang)
-    
-    # Conservative formality detection - only essential patterns
-    if target_lang.lower() == "pl":
-        # Only the most basic and safe formality fixes
-        formal_patterns = [
-            # Only the most essential Polish formality patterns
-            (r'\bproszę\s+o\s+wybaczenie\b', 'przepraszam'),
-            (r'\bw\s+chwili\s+obecnej\b', 'teraz'),
-            (r'\bobecnie\b', 'teraz'),
-        ]
-    else:
-        # Only most essential English formality patterns
-        formal_patterns = [
-            # Only the most basic and safe formality fixes
-            (r'\bI would like to\b', "I'd like to"),
-            (r'\bCould you please\b', 'Can you'),
-            (r'\bI beg your pardon\b', 'Sorry'),
-            (r'\bAt this point in time\b', 'Now'),
-            (r'\bIn the near future\b', 'Soon'),
-        ]
-    
-    # Apply patterns with strict validation
-    for pattern, replacement in formal_patterns:
-        test_result = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
-        
-        # Validate each change comprehensively
-        if test_result != improved:
-            if not validate_character_preservation(improved, test_result, 0.98):
-                continue  # Skip this pattern
-            
-            if not validate_name_preservation(improved, test_result):
-                continue  # Skip this pattern
-                
-            # Apply the change only if validation passes
-            improved = test_result
-    
-    # Final comprehensive validation
-    if not validate_character_preservation(text, improved, 0.95):
-        return text
-    
-    if not validate_name_preservation(text, improved):
-        return text
-    
-    return improved.strip()
+    # Just apply the minimal style adjustment
+    return adjust_subtitle_style_tone(text, target_lang)
 
 def fix_common_translation_issues(text: str, target_lang: str = "pl") -> str:
     """
-    Ultra-conservative fix for common translation quality issues with comprehensive protection.
-    Includes Polish character preservation and name protection.
+    Minimal fix for only the most essential translation issues.
+    Prevents over-correction by applying only safe, necessary changes.
     """
     if not text.strip():
         return text
     
-    # Pre-analysis
-    original_char_count = count_polish_characters(text)
-    original_names = detect_proper_names(text)
-    
-    fixed = text
-    
-    if target_lang.lower() == "pl":
-        # Only the safest and most essential Polish fixes
-        translation_fixes = [
-            # Ultra-conservative patterns only
-            (r'\bja\s+myślę,\s*że\b', 'myślę, że'),
-            (r'\bja\s+wiem,\s*że\b', 'wiem, że'),
-            (r'\bmam\s+nadzieję\s+na\s+to\b', 'mam nadzieję'),
-            (r'\bteraz\s+w\s+tym\s+momencie\b', 'teraz'),
-        ]
-    else:
-        # Only the safest and most essential English fixes
-        translation_fixes = [
-            (r'\bI\s+myself\s+personally\b', 'I'),
-            (r'\bthat\s+which\s+is\b', 'that is'),
-            (r'\bin\s+the\s+case\s+that\b', 'if'),
-            (r'\bnow\s+at\s+this\s+moment\b', 'now'),
-        ]
-    
-    # Apply translation fixes with comprehensive validation
-    for pattern, replacement in translation_fixes:
-        test_result = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
-        
-        # Validate each change
-        if test_result != fixed:
-            if not validate_character_preservation(fixed, test_result, 0.98):
-                continue  # Skip this pattern
-            
-            if not validate_name_preservation(fixed, test_result):
-                continue  # Skip this pattern
-                
-            # Apply the change only if validation passes
-            fixed = test_result
-    
-    # Apply only essential clarity improvements
-    fixed = _improve_sentence_clarity_conservative(fixed, target_lang)
-    
-    # Final comprehensive validation
-    if not validate_character_preservation(text, fixed, 0.95):
-        return text
-    
-    if not validate_name_preservation(text, fixed):
-        return text
+    # Only basic spacing and formatting fixes
+    fixed = re.sub(r'\s+([.!?])', r'\1', text, flags=re.IGNORECASE)  # space before punctuation
+    fixed = re.sub(r'\s{2,}', ' ', fixed, flags=re.IGNORECASE)  # multiple spaces
     
     return fixed.strip()
 
-def _improve_sentence_clarity_conservative(text: str, target_lang: str) -> str:
-    """
-    Conservative sentence clarity improvement to prevent over-correction.
-    """
-    if not text.strip():
-        return text
-    
-    improved = text
-    
-    # Only essential clarity improvements
-    clarity_fixes = [
-        # Only the safest fixes
-        (r'\s+([.!?])', r'\1'),  # space before punctuation
-        (r'\s{2,}', ' '),  # multiple spaces
-    ]
-    
-    for pattern, replacement in clarity_fixes:
-        improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
-    
-    return improved.strip()
-    
+
 
