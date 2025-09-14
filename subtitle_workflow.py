@@ -51,8 +51,8 @@ def load_nllb_13b():
     return model, tok, device
 
 def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
-                         max_length=256, num_beams=5, no_repeat_ngram_size=2,
-                         length_penalty=0.9, repetition_penalty=1.05):
+                         max_length=256, num_beams=3, no_repeat_ngram_size=2,
+                         length_penalty=1.0, repetition_penalty=1.0):
     """
     Optimized NLLB translation with improved quality and performance balance.
     Enhanced for subtitle translation with streamlined parameters.
@@ -79,14 +79,13 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
             **enc,
             forced_bos_token_id=tgt_id,
             max_length=max_length,
-            num_beams=num_beams,  # Reduced for better speed while maintaining quality
+            num_beams=num_beams,  # Conservative beam count for consistency
             early_stopping=True,
-            length_penalty=length_penalty,  # Optimized for natural subtitle length
-            no_repeat_ngram_size=no_repeat_ngram_size,  # Reduced for better performance
+            length_penalty=length_penalty,  # Neutral length penalty
+            no_repeat_ngram_size=no_repeat_ngram_size,  # Conservative repetition control
             do_sample=False,  # Deterministic for consistency
             num_return_sequences=1,
-            repetition_penalty=repetition_penalty,  # Reduced penalty for better flow
-            # Removed unused parameters for performance optimization
+            repetition_penalty=repetition_penalty,  # Minimal repetition penalty
         )
     
     decoded = tok.batch_decode(gen, skip_special_tokens=True)
@@ -367,40 +366,32 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
         ).to(DEVICE)
 
         with torch.no_grad():
-            # Enhanced generation parameters for subtitle quality
+            # Conservative generation parameters for natural translation
             if model_type == "nllb":
                 outputs = TRANS_MODEL.generate(
                     **encoded,
                     forced_bos_token_id=bos_token_id,
                     max_length=256,
-                    num_beams=8,  # Increased for better quality
+                    num_beams=3,  # Conservative beam count
                     early_stopping=True,
-                    length_penalty=0.8,  # Slightly favor shorter, more natural text
-                    no_repeat_ngram_size=3,  # Reduce repetition
-                    do_sample=False,  # Use deterministic beam search for consistency
+                    length_penalty=1.0,  # Neutral length penalty
+                    no_repeat_ngram_size=2,  # Basic repetition control
+                    do_sample=False,  # Deterministic for consistency
                     num_return_sequences=1,
-                    bad_words_ids=None,
-                    temperature=1.0,
-                    top_k=50,
-                    top_p=0.95,
-                    repetition_penalty=1.1  # Slight penalty for repetition
+                    repetition_penalty=1.0  # No repetition penalty to avoid over-processing
                 )
             else:
                 outputs = TRANS_MODEL.generate(
                     **encoded,
                     forced_bos_token_id=bos_token_id,
                     max_length=256,
-                    num_beams=8,  # Increased for better quality
+                    num_beams=3,  # Conservative beam count
                     early_stopping=True,
-                    length_penalty=0.8,  # Slightly favor shorter, more natural text
-                    no_repeat_ngram_size=3,  # Reduce repetition
-                    do_sample=False,  # Use deterministic beam search for consistency
+                    length_penalty=1.0,  # Neutral length penalty
+                    no_repeat_ngram_size=2,  # Basic repetition control
+                    do_sample=False,  # Deterministic for consistency
                     num_return_sequences=1,
-                    bad_words_ids=None,
-                    temperature=1.0,
-                    top_k=50,
-                    top_p=0.95,
-                    repetition_penalty=1.1  # Slight penalty for repetition
+                    repetition_penalty=1.0  # No repetition penalty to avoid over-processing
                 )
 
         decoded = TRANS_TOKENIZER.batch_decode(outputs, skip_special_tokens=True)
@@ -418,73 +409,23 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
 
 def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "") -> str:
     """
-    Conservative immediate quality enhancements for translated text.
-    Reduced pattern matching to prevent over-correction and character loss.
+    Minimal quality enhancement to prevent over-correction issues.
+    Only applies the safest, most essential improvements.
     """
     if not translated_text.strip():
         return translated_text
     
-    # Safety check for Polish characters
-    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
-    original_polish_chars = [char for char in translated_text if char in polish_chars]
-    
     enhanced = translated_text
     
-    # Conservative language-specific improvements - only essential patterns
-    if target_lang.lower() == "pl":
-        # Polish subtitle optimizations - only the safest patterns
-        immediate_fixes = [
-            # Only essential fixes that are very safe
-            (r'\bja jestem\b', 'jestem'),
-            (r'\bobecnie\b', 'teraz'),
-            (r'\btak,\s*tak\b', 'tak'),
-            (r'\bnie,\s*nie\b', 'nie'),
-        ]
-    else:
-        # English subtitle optimizations - only essential patterns
-        immediate_fixes = [
-            # Only essential contractions that are very safe
-            (r'\bI will\b', "I'll"),
-            (r'\byou will\b', "you'll"),
-            (r'\bwe will\b', "we'll"),
-            (r'\byes,\s*yes\b', 'yes'),
-            (r'\bno,\s*no\b', 'no'),
-        ]
+    # Only essential spacing fixes - nothing more to prevent over-correction
+    enhanced = re.sub(r'\s{2,}', ' ', enhanced)  # Multiple spaces to single
+    enhanced = re.sub(r'\s+([.!?,:;])', r'\1', enhanced)  # Remove space before punctuation
     
-    # Apply immediate fixes conservatively
-    for pattern, replacement in immediate_fixes:
-        # Test replacement for Polish text
-        if target_lang.lower() == "pl":
-            test_result = re.sub(pattern, replacement, enhanced, flags=re.IGNORECASE)
-            result_polish_chars = [char for char in test_result if char in polish_chars]
-            if len(result_polish_chars) >= len(original_polish_chars):
-                enhanced = test_result
-        else:
-            enhanced = re.sub(pattern, replacement, enhanced, flags=re.IGNORECASE)
-    
-    # Apply only essential universal fixes
-    enhanced = _apply_universal_subtitle_fixes_conservative(enhanced)
-    
-    # Final safety check for Polish characters
-    if target_lang.lower() == "pl":
-        final_polish_chars = [char for char in enhanced if char in polish_chars]
-        if len(final_polish_chars) < len(original_polish_chars) * 0.9:  # Lost more than 10% of Polish chars
-            return translated_text
+    # Capitalize first letter if needed
+    if enhanced and enhanced[0].islower():
+        enhanced = enhanced[0].upper() + enhanced[1:]
     
     return enhanced.strip()
 
-def _apply_universal_subtitle_fixes_conservative(text: str) -> str:
-    """
-    Conservative universal fixes for subtitle readability.
-    Only essential fixes to prevent over-correction.
-    """
-    # Only essential spacing and punctuation fixes
-    text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single
-    text = re.sub(r'\s+([.!?,:;])', r'\1', text)  # Remove space before punctuation
-    
-    # Capitalize first letter if needed
-    if text and text[0].islower():
-        text = text[0].upper() + text[1:]
-    
-    return text
+
 
