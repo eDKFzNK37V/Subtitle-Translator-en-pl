@@ -3,8 +3,8 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import language_tool_python
-from subtitle_workflow import translate_lines, model_setup, translate_lines_nllb
-from resources import tool_pl, tool_en, ENHANCED_GLOSSARY, apply_context_sensitive_glossary, get_context_from_text
+from subtitle_workflow import translate_lines, model_setup
+from resources import tool_pl, tool_en, ENHANCED_GLOSSARY, apply_context_sensitive_glossary
 from text_tools import (
     correct_punctuation,
     correct_grammar_with_fallback,
@@ -13,7 +13,6 @@ from text_tools import (
     clean_translation,
     extract_tags_with_placeholders,
     restore_tags_from_placeholders,
-    adjust_subtitle_style_tone,
     apply_style_tone_batch,
     detect_and_improve_formality,
 )
