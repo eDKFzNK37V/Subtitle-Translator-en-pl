@@ -98,7 +98,9 @@ def correct_text(text, lang):
         except Exception:
             pass
             
-        # Style/tone adjustment for subtitles with enhanced formality detection
+        # Style/tone adjustment for subtitles with enhanced formality detection and quality fixes
+        from text_tools import fix_common_translation_issues
+        text = fix_common_translation_issues(text, lang)
         text = detect_and_improve_formality(text, lang)
         
         return clean_translation(text)
@@ -175,8 +177,11 @@ def correct_text_batch(lines, lang, progress_callback=None):
             with ThreadPoolExecutor(max_workers=MAX_WORKERS_LT) as ex:
                 cleans = list(ex.map(lt_fix, cleans))
 
-        # 5) Style/tone adjustment for subtitle context with enhanced formality detection
+        # 5) Enhanced style/tone adjustment with quality fixes for subtitle context
         try:
+            # Apply comprehensive quality improvements
+            from text_tools import fix_common_translation_issues
+            cleans = [fix_common_translation_issues(text, lang_lower) for text in cleans]
             cleans = [detect_and_improve_formality(text, lang_lower) for text in cleans]
         except Exception:
             # Fallback to basic style adjustment

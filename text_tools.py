@@ -574,20 +574,21 @@ def correct_punctuation_batch(texts, model_choice="kredor"):
 
 def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
     """
-    Adjust text style and tone for subtitle context.
+    Enhanced subtitle style and tone adjustment with comprehensive pattern detection.
     
     Subtitle-specific adjustments:
     - Shorter, more concise phrasing
     - More natural, conversational tone
     - Removal of overly formal language
     - Cultural adaptation for target language
+    - Advanced awkward construction detection
     """
     if not text.strip():
         return text
     
     # Define style adjustments for different languages
     if target_lang.lower() == "pl":
-        # Polish subtitle style adjustments
+        # Comprehensive Polish subtitle style adjustments
         adjustments = [
             # Remove overly formal constructions
             (r'\bchciałbym\s+powiedzieć,?\s*że\b', 'chcę powiedzieć, że'),
@@ -596,6 +597,17 @@ def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
             (r'\bwydaje\s+mi\s+się,?\s*że\b', 'myślę, że'),
             (r'\bobawiam\s+się,?\s*że\b', 'niestety'),
             (r'\bbyć\s+może\s+powinniśmy\b', 'może powinniśmy'),
+            (r'\bpragnę\s+aby\b', 'chcę żeby'),
+            (r'\bżyczę\s+sobie\b', 'chcę'),
+            (r'\bmam\s+zamiar\b', 'zamierzam'),
+            (r'\bpozwolę\s+sobie\b', 'pozwolę'),
+            
+            # Enhanced awkward construction fixes
+            (r'\bw\s+tym\s+momencie\s+jestem\b', 'teraz jestem'),
+            (r'\bw\s+chwili\s+obecnej\s+znajduję\s+się\b', 'teraz jestem'),
+            (r'\baktualnie\s+wykonuję\s+czynność\b', 'robię'),
+            (r'\bobecnie\s+zajmuję\s+się\b', 'zajmuję się'),
+            (r'\bw\s+tej\s+chwili\s+mam\s+do\s+czynienia\b', 'mam do czynienia'),
             
             # Simplify complex phrases
             (r'\bw\s+związku\s+z\s+tym\b', 'dlatego'),
@@ -603,20 +615,48 @@ def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
             (r'\bw\s+konsekwencji\b', 'przez to'),
             (r'\bw\s+celu\s+ukończenia\b', 'żeby ukończyć'),
             (r'\bw\s+celu\s+([a-ząćęłńóśźż\s]+)\b', r'żeby \1'),
+            (r'\bz\s+powodu\s+tego,?\s*że\b', 'bo'),
+            (r'\bna\s+skutek\s+tego\b', 'przez to'),
+            (r'\bz\s+uwagi\s+na\s+to,?\s*że\b', 'bo'),
+            (r'\bjeśli\s+chodzi\s+o\b', 'co do'),
+            (r'\bw\s+odniesieniu\s+do\b', 'co do'),
+            (r'\bw\s+kontekście\b', 'co do'),
             
             # Make more natural for speech
             (r'\bale\s+jednak\b', 'ale'),
             (r'\bjednak\s+jednak\b', 'jednak'),
             (r'\bprawda\s+jest\s+taka,?\s*że\b', 'prawda jest, że'),
             (r'\bproduktów\s+spożywczych\b', 'jedzenia'),
+            (r'\bartykułów\s+żywnościowych\b', 'jedzenia'),
+            (r'\bśrodków\s+czystości\b', 'detergentów'),
             
-            # Conversational replacements
+            # Enhanced conversational replacements
             (r'\bna\s+pewno\b', 'pewnie'),
             (r'\bprawdopodobnie\b', 'pewnie'),
             (r'\bzupełnie\s+nie\b', 'wcale nie'),
+            (r'\bbardzo\s+dziękuję\b', 'dzięki'),
+            (r'\bdzięki\s+bardzo\b', 'dzięki'),
+            (r'\bjestem\s+wdzięczny\b', 'dzięki'),
+            (r'\bjest\s+mi\s+bardzo\s+miło\b', 'miło mi'),
+            
+            # Time expression improvements
+            (r'\bw\s+najbliższym\s+czasie\b', 'niedługo'),
+            (r'\bw\s+przyszłości\b', 'później'),
+            (r'\bw\s+przeszłości\b', 'wcześniej'),
+            (r'\bobecnie\b', 'teraz'),
+            (r'\baktualnie\b', 'teraz'),
+            (r'\bw\s+tym\s+momencie\b', 'teraz'),
+            
+            # Verb form simplifications
+            (r'\bzostanie\s+wykonane\b', 'zrobimy to'),
+            (r'\bbędzie\s+realizowane\b', 'zrobimy'),
+            (r'\buzostanie\s+ukończone\b', 'ukończymy'),
+            (r'\bmieć\s+miejsce\b', 'się wydarzyć'),
+            (r'\bodbywa\s+się\b', 'dzieje się'),
+            (r'\bdokonuje\s+się\b', 'dzieje się'),
         ]
     else:
-        # English subtitle style adjustments
+        # Enhanced English subtitle style adjustments
         adjustments = [
             # Enhanced contractions
             (r"\bI am\b(?!\s+going\s+to)", "I'm"),
@@ -631,6 +671,8 @@ def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
             (r"\bwould have\b", "would've"),
             (r"\bcould have\b", "could've"),
             (r"\bshould have\b", "should've"),
+            (r"\bmight have\b", "might've"),
+            (r"\bmust have\b", "must've"),
             
             # Convert formal expressions to conversational
             (r"\bI would like to\b", "I'd like to"),
@@ -639,6 +681,16 @@ def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
             (r"\bI am afraid that\b", "I'm afraid"),
             (r"\bPerhaps we should\b", "Maybe we should"),
             (r"\bIt seems to me that\b", "I think"),
+            (r"\bI would suggest that\b", "I think"),
+            (r"\bI would recommend that\b", "I'd say"),
+            (r"\bI believe it would be best if\b", "I think you should"),
+            
+            # Enhanced awkward construction fixes
+            (r"\bAt this point in time I am\b", "I'm now"),
+            (r"\bIn this moment I find myself\b", "I'm now"),
+            (r"\bCurrently I am engaged in\b", "I'm doing"),
+            (r"\bPresently I am involved in\b", "I'm doing"),
+            (r"\bAt the present time I have\b", "I now have"),
             
             # Make more conversational
             (r"\bI'm going to\b", "I'll"),
@@ -647,14 +699,20 @@ def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
             (r"\bwill not\b", "won't"),
             (r"\bshall not\b", "won't"),
             (r"\bmust not\b", "can't"),
+            (r"\bshould not\b", "shouldn't"),
+            (r"\bwould not\b", "wouldn't"),
+            (r"\bcould not\b", "couldn't"),
+            (r"\bmight not\b", "might not"),
             
             # Remove unnecessary filler
             (r'\bwell,?\s+', ''),
             (r'\buh,?\s+', ''),
             (r'\bum,?\s+', ''),
             (r'\byou know,?\s+', ''),
+            (r'\blike,?\s+', ''),
+            (r'\bso,?\s+anyway,?\s+', ''),
             
-            # Simplify formal phrases
+            # Enhanced formal phrase simplifications
             (r'\bin order to\b', 'to'),
             (r'\bdue to the fact that\b', 'because'),
             (r'\bfor the reason that\b', 'because'),
@@ -662,14 +720,37 @@ def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
             (r'\bwith regard to\b', 'about'),
             (r'\bin the event that\b', 'if'),
             (r'\bfor the purpose of\b', 'to'),
+            (r'\bin connection with\b', 'about'),
+            (r'\bwith respect to\b', 'about'),
+            (r'\bconcerning the matter of\b', 'about'),
             
-            # Shorter alternatives for common phrases
+            # Enhanced alternatives for common phrases
             (r'\ba large number of\b', 'many'),
             (r'\ba great deal of\b', 'lots of'),
             (r'\bat this point in time\b', 'now'),
             (r'\bin the near future\b', 'soon'),
             (r'\bmake an attempt to\b', 'try to'),
             (r'\bgive consideration to\b', 'consider'),
+            (r'\btake into account\b', 'consider'),
+            (r'\bcome to the conclusion\b', 'conclude'),
+            (r'\bmake a decision\b', 'decide'),
+            (r'\bgive assistance to\b', 'help'),
+            (r'\bprovide assistance to\b', 'help'),
+            
+            # Time expression improvements
+            (r'\bin the past\b', 'before'),
+            (r'\bin the future\b', 'later'),
+            (r'\bat the present time\b', 'now'),
+            (r'\bcurrently\b', 'now'),
+            (r'\bpresently\b', 'now'),
+            (r'\bat this moment\b', 'now'),
+            
+            # Passive voice to active simplifications
+            (r'\bwill be completed by\b', 'will finish'),
+            (r'\bis being done by\b', 'is doing'),
+            (r'\bwas performed by\b', 'did'),
+            (r'\bwill be handled by\b', 'will handle'),
+            (r'\bis being managed by\b', 'is managing'),
         ]
     
     adjusted = text
@@ -720,7 +801,8 @@ def apply_style_tone_batch(texts: List[str], target_lang: str = "pl") -> List[st
 
 def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
     """
-    Detect overly formal language and suggest improvements for subtitle context.
+    Enhanced formality detection and natural language improvement for subtitle context.
+    Now includes comprehensive conversational pattern detection and quality assessment.
     """
     if not text.strip():
         return text
@@ -728,10 +810,11 @@ def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
     # Apply standard style adjustments first
     improved = adjust_subtitle_style_tone(text, target_lang)
     
-    # Additional formality detection and correction
+    # Enhanced formality detection and correction
     if target_lang.lower() == "pl":
-        # Polish formality patterns
+        # Comprehensive Polish formality and naturalness patterns
         formal_patterns = [
+            # Basic formality
             (r'\bpoproszę\s+o\b', 'poproszę'),
             (r'\bmam\s+nadzieję,?\s*że\b', 'mam nadzieję, że'),
             (r'\bchciałbym\s+się\s+dowiedzieć\b', 'chcę wiedzieć'),
@@ -740,10 +823,43 @@ def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
             (r'\bzgadzam\s+się\s+z\s+panem/panią\b', 'zgadzam się'),
             (r'\bproszę\s+o\s+wybaczenie\b', 'przepraszam'),
             (r'\bbyć\s+może\s+było\s+by\b', 'może byłoby'),
+            
+            # Enhanced conversational patterns
+            (r'\bchciałbym\s+ci\s+powiedzieć\b', 'powiem ci'),
+            (r'\bmuszę\s+ci\s+coś\s+powiedzieć\b', 'słuchaj'),
+            (r'\bpozwól,?\s*że\s+ci\s+powiem\b', 'powiem ci'),
+            (r'\bmam\s+do\s+ciebie\s+prośbę\b', 'poproszę cię'),
+            (r'\bchciałbym\s+żebyś\s+wiedział\b', 'musisz wiedzieć'),
+            (r'\bpragnę\s+aby\b', 'chcę żeby'),
+            (r'\bmam\s+zamiar\s+się\s+dowiedzieć\b', 'dowiem się'),
+            
+            # Awkward constructions
+            (r'\bw\s+ten\s+sposób\s+będziemy\b', 'będziemy'),
+            (r'\bw\s+tej\s+chwili\s+jestem\b', 'teraz jestem'),
+            (r'\bw\s+związku\s+z\s+powyższym\b', 'dlatego'),
+            (r'\bna\s+podstawie\s+tego\b', 'przez to'),
+            (r'\bz\s+uwagi\s+na\s+fakt,?\s*że\b', 'bo'),
+            (r'\bjeśli\s+chodzi\s+o\b', 'co do'),
+            (r'\bw\s+odniesieniu\s+do\b', 'co do'),
+            
+            # Unnatural speech patterns
+            (r'\bobecnie\s+znajduję\s+się\b', 'jestem'),
+            (r'\baktualnie\s+wykonuję\b', 'robię'),
+            (r'\bw\s+chwili\s+obecnej\b', 'teraz'),
+            (r'\bw\s+najbliższym\s+czasie\b', 'niedługo'),
+            (r'\bw\s+przyszłości\b', 'później'),
+            (r'\bw\s+przeszłości\b', 'wcześniej'),
+            
+            # Complex verb forms to simpler
+            (r'\bzostanie\s+wykonane\b', 'zrobimy to'),
+            (r'\bbędzie\s+realizowane\b', 'zrobimy'),
+            (r'\bmieć\s+miejsce\b', 'się wydarzyć'),
+            (r'\bodbywa\s+się\b', 'dzieje się'),
         ]
     else:
-        # English formality patterns
+        # Enhanced English formality and naturalness patterns
         formal_patterns = [
+            # Basic formality fixes
             (r'\bI would be delighted to\b', "I'd love to"),
             (r'\bI would appreciate it if\b', "I'd appreciate if"),
             (r'\bCould you please\b', 'Can you'),
@@ -754,11 +870,235 @@ def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
             (r'\bI dare say\b', "I'd say"),
             (r'\bIf I may\b', "If I can"),
             (r'\bForgive me for\b', "Sorry for"),
+            
+            # Enhanced conversational improvements
+            (r'\bI would like to inform you that\b', "I need to tell you:"),
+            (r'\bI wish to express my\b', "I want to say"),
+            (r'\bI am writing to inquire about\b', "I'm asking about"),
+            (r'\bI would be grateful if you could\b', "Can you"),
+            (r'\bI hope this message finds you well\b', "Hi"),
+            (r'\bI trust that\b', "I hope"),
+            (r'\bI am confident that\b', "I know"),
+            
+            # Awkward constructions
+            (r'\bAt this point in time\b', 'Now'),
+            (r'\bIn the near future\b', 'Soon'),
+            (r'\bIn the past\b', 'Before'),
+            (r'\bDuring the course of\b', 'During'),
+            (r'\bWith regard to\b', 'About'),
+            (r'\bIn connection with\b', 'About'),
+            (r'\bFor the purpose of\b', 'To'),
+            (r'\bIn order to achieve\b', 'To get'),
+            
+            # Unnatural speech patterns
+            (r'\bI am currently located at\b', "I'm at"),
+            (r'\bI am presently engaged in\b', "I'm doing"),
+            (r'\bI will proceed to\b', "I'll"),
+            (r'\bI shall endeavor to\b', "I'll try to"),
+            (r'\bIt is my intention to\b', "I plan to"),
+            (r'\bI have the pleasure of\b', "I get to"),
+            
+            # Passive to active voice
+            (r'\bwill be completed by\b', 'will finish'),
+            (r'\bis being done by\b', 'is doing'),
+            (r'\bwas performed by\b', 'did'),
+            (r'\bwill be handled by\b', 'will handle'),
         ]
     
     for pattern, replacement in formal_patterns:
         improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
     
+    # Apply additional naturalness improvements
+    improved = _improve_conversational_flow(improved, target_lang)
+    
     return improved
+
+def _improve_conversational_flow(text: str, target_lang: str) -> str:
+    """
+    Improve conversational flow and naturalness for subtitle context.
+    """
+    if not text.strip():
+        return text
+    
+    improved = text
+    
+    if target_lang.lower() == "pl":
+        # Polish conversational flow improvements
+        flow_patterns = [
+            # Better dialogue starters
+            (r'^słuchaj,\s*', ''),  # Remove redundant "listen"
+            (r'^wiesz\s+co,?\s*', ''),  # Remove redundant "you know what"
+            (r'^powiem\s+ci\s+co,?\s*', ''),  # Remove redundant "I'll tell you what"
+            
+            # Natural question patterns
+            (r'\bczy\s+ty\s+', 'czy '),
+            (r'\bczy\s+on\s+', 'czy '),
+            (r'\bczy\s+ona\s+', 'czy '),
+            
+            # Emotion and emphasis
+            (r'\bjest\s+bardzo\s+', 'jest '),
+            (r'\bto\s+jest\s+naprawdę\s+', 'to naprawdę '),
+            (r'\bbardzo\s+bardzo\s+', 'bardzo '),
+        ]
+    else:
+        # English conversational flow improvements  
+        flow_patterns = [
+            # Better dialogue starters
+            (r'^look,\s*', ''),  # Remove redundant "look"
+            (r'^you know,\s*', ''),  # Remove redundant "you know"
+            (r'^let me tell you,\s*', ''),  # Remove redundant starter
+            
+            # Natural question patterns
+            (r'\bdo you really\s+', 'do you '),
+            (r'\bdid you actually\s+', 'did you '),
+            (r'\bwill you truly\s+', 'will you '),
+            
+            # Emotion and emphasis
+            (r'\bis very very\s+', 'is very '),
+            (r'\bis really really\s+', 'is really '),
+            (r'\bso so\s+', 'so '),
+        ]
+    
+    for pattern, replacement in flow_patterns:
+        improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+    
+    return improved.strip()
+
+def fix_common_translation_issues(text: str, target_lang: str = "pl") -> str:
+    """
+    Fix common translation quality issues that create unpleasant or awkward sentences.
+    This function specifically targets problematic patterns that arise from machine translation.
+    """
+    if not text.strip():
+        return text
+    
+    fixed = text
+    
+    if target_lang.lower() == "pl":
+        # Common Polish translation issues
+        translation_fixes = [
+            # Awkward word order fixes
+            (r'\bja\s+jestem\s+([a-ząćęłńóśźż]+)\b', r'jestem \1'),
+            (r'\bty\s+jesteś\s+([a-ząćęłńóśźż]+)\b', r'jesteś \1'),
+            (r'\bon\s+jest\s+([a-ząćęłńóśźż]+)\b', r'jest \1'),
+            (r'\bona\s+jest\s+([a-ząćęłńóśźż]+)\b', r'jest \1'),
+            
+            # Redundant pronoun usage
+            (r'\bja\s+myślę,\s*że\b', 'myślę, że'),
+            (r'\bja\s+wiem,\s*że\b', 'wiem, że'),
+            (r'\bja\s+czuję,\s*że\b', 'czuję, że'),
+            (r'\bja\s+uważam,\s*że\b', 'uważam, że'),
+            
+            # Literal translation fixes
+            (r'\bmam\s+problem\s+z\b', 'nie mogę'),
+            (r'\bmam\s+trudności\s+z\b', 'trudno mi'),
+            (r'\brodze\s+problemy\b', 'stwarzam problemy'),
+            (r'\bmam\s+nadzieję\s+na\s+to\b', 'mam nadzieję'),
+            
+            # Unnatural phrase patterns
+            (r'\bjest\s+to\s+([a-ząćęłńóśźż]+)\b', r'to \1'),
+            (r'\bto\s+jest\s+to,\s*co\b', 'to co'),
+            (r'\bto\s+jest\s+miejsce,\s*gdzie\b', 'to miejsce gdzie'),
+            (r'\bto\s+jest\s+osoba,\s*która\b', 'to osoba która'),
+            
+            # Formal construction fixes
+            (r'\bzostać\s+([a-ząćęłńóśźż]+)ym\b', r'być \1ym'),
+            (r'\bstać\s+się\s+([a-ząćęłńóśźż]+)ym\b', r'zostać \1ym'),
+            (r'\budać\s+się\s+do\b', 'iść do'),
+            (r'\bprzybywać\s+do\b', 'przychodzić do'),
+            
+            # Emotional expression improvements
+            (r'\bjestem\s+zadowolony\s+z\s+tego\b', 'cieszę się'),
+            (r'\bjestem\s+niezadowolony\s+z\s+tego\b', 'nie podoba mi się to'),
+            (r'\bjestem\s+zły\s+na\s+ciebie\b', 'złoszczę się na ciebie'),
+            (r'\bjestem\s+szczęśliwy,?\s*że\b', 'cieszę się, że'),
+            
+            # Time and aspect improvements
+            (r'\bteraz\s+w\s+tym\s+momencie\b', 'teraz'),
+            (r'\bw\s+tej\s+chwili\s+teraz\b', 'teraz'),
+            (r'\bobecnie\s+w\s+tym\s+czasie\b', 'teraz'),
+            (r'\baktualnie\s+obecnie\b', 'teraz'),
+        ]
+    else:
+        # Common English translation issues
+        translation_fixes = [
+            # Redundant constructions
+            (r'\bI\s+myself\s+personally\b', 'I'),
+            (r'\byou\s+yourself\s+personally\b', 'you'),
+            (r'\bhe\s+himself\s+personally\b', 'he'),
+            (r'\bshe\s+herself\s+personally\b', 'she'),
+            
+            # Awkward word order
+            (r'\bthat\s+which\s+is\b', 'that is'),
+            (r'\bthose\s+which\s+are\b', 'those that are'),
+            (r'\bthe\s+thing\s+that\s+is\b', 'what is'),
+            (r'\bthe\s+place\s+where\s+it\s+is\b', 'where it is'),
+            
+            # Literal translation artifacts
+            (r'\bI\s+have\s+the\s+feeling\s+that\b', 'I feel'),
+            (r'\bI\s+have\s+the\s+impression\s+that\b', 'I think'),
+            (r'\bI\s+have\s+the\s+opinion\s+that\b', 'I believe'),
+            (r'\bI\s+have\s+the\s+belief\s+that\b', 'I believe'),
+            
+            # Unnatural expressions
+            (r'\bit\s+is\s+that\s+which\b', 'it is what'),
+            (r'\bthis\s+is\s+that\s+which\b', 'this is what'),
+            (r'\bthat\s+is\s+the\s+thing\s+that\b', 'that is what'),
+            (r'\bthis\s+is\s+the\s+reason\s+why\b', 'this is why'),
+            
+            # Overly formal constructions
+            (r'\bin\s+the\s+case\s+that\b', 'if'),
+            (r'\bin\s+the\s+situation\s+where\b', 'when'),
+            (r'\bin\s+the\s+circumstance\s+that\b', 'if'),
+            (r'\bin\s+the\s+condition\s+that\b', 'if'),
+            
+            # Time redundancy
+            (r'\bnow\s+at\s+this\s+moment\b', 'now'),
+            (r'\bcurrently\s+at\s+this\s+time\b', 'now'),
+            (r'\bpresently\s+at\s+this\s+moment\b', 'now'),
+            (r'\btoday\s+in\s+this\s+day\b', 'today'),
+        ]
+    
+    # Apply translation fixes
+    for pattern, replacement in translation_fixes:
+        fixed = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
+    
+    # Apply additional quality improvements
+    fixed = _improve_sentence_clarity(fixed, target_lang)
+    
+    return fixed.strip()
+
+def _improve_sentence_clarity(text: str, target_lang: str) -> str:
+    """
+    Improve sentence clarity and readability for subtitle context.
+    """
+    if not text.strip():
+        return text
+    
+    improved = text
+    
+    # Universal clarity improvements
+    clarity_fixes = [
+        # Remove excessive repetition
+        (r'\b(\w+)\s+\1\b', r'\1'),  # word word -> word
+        (r'\b(bardzo|very)\s+(bardzo|very)\b', r'\1'),  # very very -> very
+        (r'\b(really|naprawdę)\s+(really|naprawdę)\b', r'\1'),  # really really -> really
+        
+        # Fix common spacing issues
+        (r'\s+([.!?])', r'\1'),  # space before punctuation
+        (r'([.!?])\s*([.!?])', r'\1'),  # duplicate punctuation
+        (r'\s{2,}', ' '),  # multiple spaces
+        
+        # Improve sentence flow
+        (r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper()),
+    ]
+    
+    for pattern, replacement in clarity_fixes:
+        if callable(replacement):
+            improved = re.sub(pattern, replacement, improved)
+        else:
+            improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+    
+    return improved.strip()
     
 

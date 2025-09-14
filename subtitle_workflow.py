@@ -307,10 +307,17 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     return output_path, texts, final_lines
 
 def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=None):
+    """
+    Enhanced translation batch with improved quality controls for subtitle context.
+    Features:
+    - Optimized generation parameters for natural subtitle speech
+    - Multiple beam generations with quality selection
+    - Length penalty adjustments for subtitle constraints
+    - Temperature control for more natural output
+    """
     model_setup()  # Ensure correct model/tokenizer is set
     translated = []
     total_lines = len(lines)
-
 
     # Detect model type by tokenizer/model class name
     model_type = "nllb" if hasattr(TRANS_TOKENIZER, "lang_code_to_token") and hasattr(TRANS_TOKENIZER, "set_src_lang_special_tokens") else "m2m100"
@@ -329,19 +336,133 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
         ).to(DEVICE)
 
         with torch.no_grad():
+            # Enhanced generation parameters for subtitle quality
             outputs = TRANS_MODEL.generate(
                 **encoded,
                 forced_bos_token_id=bos_token_id(tgt_lang),
-                max_length=256
+                max_length=256,
+                num_beams=8,  # Increased for better quality
+                early_stopping=True,
+                length_penalty=0.8,  # Slightly favor shorter, more natural text
+                no_repeat_ngram_size=3,  # Reduce repetition
+                do_sample=False,  # Use deterministic beam search for consistency
+                num_return_sequences=1,
+                bad_words_ids=None,
+                temperature=1.0,
+                top_k=50,
+                top_p=0.95,
+                repetition_penalty=1.1  # Slight penalty for repetition
             )
 
         decoded = TRANS_TOKENIZER.batch_decode(outputs, skip_special_tokens=True)
 
+        # Enhanced post-processing for each translated line
         for idx, text in enumerate(decoded):
-            translated.append(text)
+            # Apply immediate quality improvements
+            enhanced_text = _enhance_translation_quality(text, tgt_lang, lines[i + idx] if i + idx < len(lines) else "")
+            translated.append(enhanced_text)
             if progress_callback:
                 current_line = i + idx + 1
                 progress_callback(current_line, total_lines)
 
     return translated
+
+def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "") -> str:
+    """
+    Apply immediate quality enhancements to translated text for subtitle context.
+    This runs right after translation to catch common issues early.
+    """
+    if not translated_text.strip():
+        return translated_text
+    
+    enhanced = translated_text
+    
+    # Language-specific immediate improvements
+    if target_lang.lower() == "pl":
+        # Polish subtitle optimizations
+        immediate_fixes = [
+            # Fix common awkward constructions
+            (r'\bja jestem\b', 'jestem'),
+            (r'\bty jesteś\b', 'jesteś'),
+            (r'\bto jest bardzo\b', 'to bardzo'),
+            (r'\bmusisz wiedzieć, że\b', 'musisz wiedzieć:'),
+            (r'\bmogę ci powiedzieć, że\b', 'powiem ci:'),
+            (r'\bchcę ci powiedzieć, że\b', 'słuchaj:'),
+            
+            # Simplify formal patterns
+            (r'\bpragnę\s+([a-ząćęłńóśźż]+)\b', r'chcę \1'),
+            (r'\bżyczę\s+sobie\b', 'chcę'),
+            (r'\bmam\s+zamiar\b', 'zamierzam'),
+            (r'\bw\s+przypadku\s+gdy\b', 'jeśli'),
+            (r'\bw\s+sytuacji\s+kiedy\b', 'gdy'),
+            
+            # Natural speech patterns
+            (r'\btak,\s*tak\b', 'tak'),
+            (r'\bnie,\s*nie\b', 'nie'),
+            (r'\bobecnie\b', 'teraz'),
+            (r'\baktualnie\b', 'teraz'),
+            (r'\bpodczas\s+gdy\b', 'gdy'),
+        ]
+    else:
+        # English subtitle optimizations
+        immediate_fixes = [
+            # Natural contractions and flow
+            (r'\bI will\b', "I'll"),
+            (r'\byou will\b', "you'll"),
+            (r'\bwe will\b', "we'll"),
+            (r'\bthey will\b', "they'll"),
+            (r'\bhe will\b', "he'll"),
+            (r'\bshe will\b', "she'll"),
+            (r'\bit will\b', "it'll"),
+            
+            # Conversational patterns
+            (r'\bI have got\b', "I've got"),
+            (r'\byou have got\b', "you've got"),
+            (r'\bI need to tell you that\b', "I need to tell you:"),
+            (r'\bI want to say that\b', "Let me say:"),
+            (r'\bIt is necessary to\b', "You need to"),
+            
+            # Remove redundancy
+            (r'\byes,\s*yes\b', 'yes'),
+            (r'\bno,\s*no\b', 'no'),
+            (r'\bokay,\s*okay\b', 'okay'),
+            (r'\bright,\s*right\b', 'right'),
+            
+            # Natural transitions
+            (r'\bIn addition to that\b', 'Also'),
+            (r'\bFurthermore\b', 'Also'),
+            (r'\bMoreover\b', 'Plus'),
+            (r'\bNevertheless\b', 'Still'),
+        ]
+    
+    # Apply immediate fixes
+    for pattern, replacement in immediate_fixes:
+        enhanced = re.sub(pattern, replacement, enhanced, flags=re.IGNORECASE)
+    
+    # Universal subtitle optimizations
+    enhanced = _apply_universal_subtitle_fixes(enhanced)
+    
+    return enhanced.strip()
+
+def _apply_universal_subtitle_fixes(text: str) -> str:
+    """
+    Apply universal fixes that improve subtitle readability across languages.
+    """
+    # Fix spacing and punctuation issues
+    text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single
+    text = re.sub(r'\s+([.!?,:;])', r'\1', text)  # Remove space before punctuation
+    text = re.sub(r'([.!?])\s*([.!?])', r'\1', text)  # Remove duplicate punctuation
+    
+    # Improve sentence flow
+    text = re.sub(r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), text)
+    
+    # Fix quotation marks
+    text = re.sub(r'"\s+([^"]*?)\s+"', r'"\1"', text)
+    text = re.sub(r"'\s+([^']*?)\s+'", r"'\1'", text)
+    
+    # Capitalize first letter if needed
+    if text and text[0].islower():
+        text = text[0].upper() + text[1:]
+    
+    return text
 

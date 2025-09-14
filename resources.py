@@ -1,7 +1,7 @@
 import language_tool_python
 import re
 
-# Extended glossary for subtitle translation
+# Extended glossary for subtitle translation with enhanced conversational patterns
 ENHANCED_GLOSSARY = {
     # Common terms
     "White Hearts": "Białe Serca",
@@ -27,7 +27,7 @@ ENHANCED_GLOSSARY = {
     "mana": "mana",
     "experience": "doświadczenie",
     
-    # Common dialogue expressions
+    # Enhanced dialogue expressions for natural flow
     "you know": "wiesz",
     "I mean": "to znaczy",
     "by the way": "a propos",
@@ -41,6 +41,39 @@ ENHANCED_GLOSSARY = {
     "oh my god": "o mój Boże",
     "what the hell": "co do diabła",
     "damn it": "cholera",
+    "seriously": "serio",
+    "honestly": "szczerze",
+    "obviously": "oczywiście",
+    "actually": "właściwie",
+    "basically": "w sumie",
+    "definitely": "na pewno",
+    "probably": "pewnie",
+    "maybe": "może",
+    "whatever": "nieważne",
+    "anyway": "w każdym razie",
+    "somehow": "jakoś",
+    "somewhere": "gdzieś",
+    "everything": "wszystko",
+    "nothing": "nic",
+    "something": "coś",
+    "anything": "cokolwiek",
+    
+    # Common conversational transitions
+    "listen": "słuchaj",
+    "look": "słuchaj",
+    "hey": "hej",
+    "well": "no",
+    "so": "więc",
+    "okay": "dobrze",
+    "right": "tak",
+    "sure": "jasne",
+    "fine": "dobrze",
+    "great": "świetnie",
+    "perfect": "idealnie",
+    "exactly": "dokładnie",
+    "absolutely": "absolutnie",
+    "totally": "całkowicie",
+    "completely": "zupełnie",
     
     # Formal/business terms
     "meeting": "spotkanie",
@@ -66,7 +99,7 @@ ENHANCED_GLOSSARY = {
     "system": "system",
     "application": "aplikacja",
     
-    # Common phrases for natural flow
+    # Enhanced phrases for natural flow with improved patterns
     "I don't know": "nie wiem",
     "I think": "myślę",
     "I believe": "wierzę",
@@ -77,6 +110,33 @@ ENHANCED_GLOSSARY = {
     "probably": "prawdopodobnie",
     "maybe": "może",
     "perhaps": "być może",
+    
+    # Common problematic formal constructions to natural equivalents
+    "I would like to inform you": "powiem ci",
+    "I need to tell you that": "słuchaj",
+    "I want you to know": "musisz wiedzieć",
+    "I have to say that": "powiem ci",
+    "Let me tell you": "słuchaj",
+    "I should mention": "powinienem powiedzieć",
+    "It's important to note": "ważne że",
+    "I'd like to point out": "chcę pokazać",
+    "Allow me to explain": "wyjaśnię",
+    "I need to clarify": "wyjaśnię",
+    
+    # Reverse mapping for English → Polish problematic patterns
+    "chciałbym powiedzieć": "powiem",
+    "muszę przyznać": "przyznaję",
+    "wydaje mi się": "myślę",
+    "obawiam się": "niestety",
+    "w związku z tym": "dlatego",
+    "w rezultacie": "przez to",
+    "w konsekwencji": "więc",
+    "na pewno": "pewnie",
+    "prawdopodobnie": "pewnie",
+    "zupełnie nie": "wcale nie",
+    "bardzo dziękuję": "dzięki",
+    "jestem wdzięczny": "dzięki",
+    "byłbym wdzięczny": "byłoby miło",
 }
 
 # Context-sensitive glossary rules
