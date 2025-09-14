@@ -589,77 +589,191 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
     return out
 
 
-def log_names_and_unknown_words(original_lines: list, corrected_lines: list, log_file: str = "correction_log.txt") -> None:
-    """
-    Log detected names and potentially problematic words for human review.
-    Helps identify words that may need special handling during correction.
-    """
-    import os
+# Global storage for session-wide logging
+_session_log_data = {
+    'detected_names': set(),
+    'unknown_words': set(),
+    'problematic_changes': [],
+    'session_started': False,
+    'log_file': None
+}
+
+def initialize_session_log():
+    """Initialize a single log file for the entire translation session."""
+    global _session_log_data
     from datetime import datetime
     
-    detected_names = set()
-    problematic_changes = []
+    if not _session_log_data['session_started']:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        _session_log_data['log_file'] = f"correction_log_{timestamp}.txt"
+        _session_log_data['session_started'] = True
+        _session_log_data['detected_names'] = set()
+        _session_log_data['unknown_words'] = set()
+        _session_log_data['problematic_changes'] = []
+
+def is_likely_unknown_word(word: str) -> bool:
+    """Check if a word is likely unknown/foreign and should be logged."""
+    import re
+    
+    # Skip very short words
+    if len(word) < 3:
+        return False
+        
+    # Extended list of common English words to exclude
+    common_english = {
+        'the', 'and', 'but', 'for', 'you', 'are', 'its', 'it\'s', 'don\'t', 'can\'t', 'won\'t',
+        'hello', 'hi', 'yes', 'no', 'this', 'that', 'with', 'have', 'will', 'would', 'could',
+        'should', 'there', 'here', 'where', 'when', 'what', 'why', 'how', 'who', 'which',
+        'time', 'good', 'bad', 'big', 'small', 'new', 'old', 'first', 'last', 'long', 'short',
+        'right', 'left', 'high', 'low', 'hot', 'cold'
+    }
+    
+    if word.lower() in common_english:
+        return False
+        
+    # Extended list of common Polish words to exclude  
+    common_polish = {
+        'będę', 'dziś', 'jest', 'mam', 'czy', 'ale', 'tak', 'nie', 'co', 'jak', 'gdzie', 
+        'kiedy', 'dlaczego', 'który', 'która', 'które', 'tego', 'tej', 'tym', 'tych',
+        'jego', 'jej', 'ich', 'nasz', 'nasza', 'nasze', 'wasz', 'wasza', 'wasze',
+        'bardzo', 'dobrze', 'źle', 'może', 'może', 'tylko', 'już', 'jeszcze', 'także',
+        'tez', 'również', 'jednak', 'więc', 'przez', 'przed', 'after', 'podczas'
+    }
+    
+    if word.lower() in common_polish:
+        return False
+        
+    # Consider words with non-standard patterns as potentially unknown
+    unusual_patterns = [
+        r'[A-Z]{3,}',  # All caps words longer than 2 chars
+        r'^[A-Z][a-z]*[A-Z]',  # CamelCase
+        r'[xzqj]{2,}',  # Unusual letter combinations
+    ]
+    
+    for pattern in unusual_patterns:
+        if re.search(pattern, word):
+            return True
+    
+    # Check for Polish diacritics - if word has Polish characters but was lost, it's significant
+    polish_chars = 'ąćęłńóśźż'
+    if any(char in word.lower() for char in polish_chars):
+        return True
+            
+    # Consider capitalized words that are likely proper names (Japanese names, foreign names)
+    # Exclude common English capitalized words
+    excluded_caps = {
+        'Hello', 'Good', 'Yes', 'No', 'Please', 'Thank', 'Thanks', 'Sorry', 'Okay', 'Ok',
+        'Maybe', 'Really', 'Sure', 'Fine', 'Great', 'Well', 'Right', 'Left', 'Up', 'Down'
+    }
+    
+    if word in excluded_caps:
+        return False
+        
+    # Names are typically capitalized and longer than 3 chars
+    if word[0].isupper() and len(word) > 3:
+        # Additional check: Japanese-style names or obviously foreign names
+        if any(pattern in word for pattern in ['ki', 'to', 'na', 'su', 'ra', 'yu']):
+            return True
+        # Or names that don't look like common English words
+        if not re.match(r'^[A-Z][a-z]+$', word):
+            return True
+        # Long capitalized words that might be names
+        if len(word) > 5:
+            return True
+            
+    return False
+
+def accumulate_correction_data(original_lines: list, corrected_lines: list) -> None:
+    """
+    Accumulate data about corrections for later logging.
+    Only tracks truly unknown words and significant name changes.
+    """
+    global _session_log_data
+    
+    initialize_session_log()
     
     for i, (original, corrected) in enumerate(zip(original_lines, corrected_lines)):
-        # Detect names in original text
-        names = detect_proper_names(original)
-        detected_names.update(names)
-        
-        # Check for problematic changes
-        if original != corrected:
-            # Check for significant word changes
-            original_words = set(original.split())
-            corrected_words = set(corrected.split())
-            lost_words = original_words - corrected_words
-            added_words = corrected_words - original_words
+        if original == corrected:
+            continue
             
-            if lost_words or added_words:
-                problematic_changes.append({
-                    'line': i + 1,
+        # Detect potential names and unknown words
+        original_words = original.split()
+        corrected_words = corrected.split()
+        
+        # Check for lost words that might be names or unknown words
+        lost_words = set(original_words) - set(corrected_words)
+        for word in lost_words:
+            cleaned_word = re.sub(r'[^\w]', '', word)  # Remove punctuation
+            if cleaned_word and (is_likely_unknown_word(cleaned_word) or len(cleaned_word) > 5):
+                _session_log_data['unknown_words'].add(cleaned_word)
+                
+                # Track significant changes
+                _session_log_data['problematic_changes'].append({
                     'original': original,
                     'corrected': corrected,
-                    'lost_words': list(lost_words),
-                    'added_words': list(added_words)
+                    'lost_word': cleaned_word
                 })
+
+def write_session_log() -> None:
+    """Write the accumulated session data to a single log file."""
+    global _session_log_data
     
-    # Write log if there's anything to report
-    if detected_names or problematic_changes:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_path = f"correction_log_{timestamp}.txt"
+    if not _session_log_data['session_started'] or not _session_log_data['log_file']:
+        return
         
-        try:
-            with open(log_path, 'w', encoding='utf-8') as f:
-                f.write(f"Correction Analysis Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write("=" * 60 + "\n\n")
+    # Only write if we have meaningful data
+    if not (_session_log_data['unknown_words'] or _session_log_data['problematic_changes']):
+        return
+        
+    try:
+        from datetime import datetime
+        with open(_session_log_data['log_file'], 'w', encoding='utf-8') as f:
+            f.write(f"Translation Session Analysis - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("=" * 60 + "\n\n")
+            
+            if _session_log_data['unknown_words']:
+                f.write("UNKNOWN/FOREIGN WORDS (review for dictionary addition):\n")
+                f.write("-" * 50 + "\n")
+                for word in sorted(_session_log_data['unknown_words']):
+                    f.write(f"  • {word}\n")
+                f.write("\n")
+            
+            if _session_log_data['problematic_changes']:
+                f.write("SIGNIFICANT CORRECTIONS (review for accuracy):\n")
+                f.write("-" * 45 + "\n")
+                # Group similar changes to reduce noise
+                change_groups = {}
+                for change in _session_log_data['problematic_changes']:
+                    key = change['lost_word']
+                    if key not in change_groups:
+                        change_groups[key] = []
+                    change_groups[key].append(change)
                 
-                if detected_names:
-                    f.write("DETECTED NAMES (review for protection):\n")
-                    f.write("-" * 40 + "\n")
-                    for name in sorted(detected_names):
-                        f.write(f"  • {name}\n")
-                    f.write("\n")
-                
-                if problematic_changes:
-                    f.write("PROBLEMATIC CORRECTIONS (review for accuracy):\n")
-                    f.write("-" * 50 + "\n")
-                    for change in problematic_changes:
-                        f.write(f"Line {change['line']}:\n")
+                for word, changes in sorted(change_groups.items()):
+                    f.write(f"Lost word: '{word}' ({len(changes)} occurrences)\n")
+                    # Show only first few examples to avoid spam
+                    for change in changes[:3]:
                         f.write(f"  Original:  {change['original']}\n")
                         f.write(f"  Corrected: {change['corrected']}\n")
-                        if change['lost_words']:
-                            f.write(f"  Lost words: {', '.join(change['lost_words'])}\n")
-                        if change['added_words']:
-                            f.write(f"  Added words: {', '.join(change['added_words'])}\n")
-                        f.write("\n")
-                
-                f.write("\nRecommendations:\n")
-                f.write("- Review detected names and add to protection list if needed\n")
-                f.write("- Check problematic corrections for accuracy\n")
-                f.write("- Consider adjusting confidence thresholds if too many changes\n")
-                
-            print(f"Correction analysis logged to: {log_path}")
-        except Exception as e:
-            print(f"Warning: Could not write correction log: {e}")
+                    if len(changes) > 3:
+                        f.write(f"  ... and {len(changes) - 3} more occurrences\n")
+                    f.write("\n")
+            
+            f.write("Recommendations:\n")
+            f.write("- Review unknown words - add important ones to glossary\n")
+            f.write("- Check if corrections removed important names/terms\n")
+            f.write("- Consider adjusting confidence thresholds if needed\n")
+            
+        print(f"Session analysis logged to: {_session_log_data['log_file']}")
+    except Exception as e:
+        print(f"Warning: Could not write session log: {e}")
+
+# Keep the old function name for compatibility but redirect to new system
+def log_names_and_unknown_words(original_lines: list, corrected_lines: list, log_file: str = "correction_log.txt") -> None:
+    """
+    Compatibility wrapper - now accumulates data instead of immediately writing.
+    """
+    accumulate_correction_data(original_lines, corrected_lines)
 
 def correct_grammar_batch(texts, confidence_threshold: float = 0.75, enable_logging: bool = True):
     """

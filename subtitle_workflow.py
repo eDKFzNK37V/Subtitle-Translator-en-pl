@@ -328,6 +328,10 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
     save_subtitle_lines(final_lines, output_path, subs, idx_map)
 
+    # Write session log at the end of translation
+    from text_tools import write_session_log
+    write_session_log()
+
     return output_path, texts, final_lines
 
 def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=None):
