@@ -450,9 +450,15 @@ def run_gui_nllb():
                     for i in range(len(translated[len(corrected_all):total])):
                         controller.update_post_progress(len(corrected_all), total)
 
+
                 def final_update_and_stop():
                     controller.update_post_progress(total, total)
                     stop_flag["stop"] = True
+                    # Force UI to 100% and 'complete' after post-processing
+                    controller.progress_var.set(100)
+                    controller.status_label.config(text="100% | Time remaining: 00:00")
+                    controller.post_label.config(text="Post-processing: complete")
+                    controller.root.update_idletasks()
                 root.after(0, final_update_and_stop)
 
                 # Insert \N tags at user-specified word index as the final step

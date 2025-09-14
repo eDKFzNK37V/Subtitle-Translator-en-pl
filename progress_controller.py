@@ -134,6 +134,13 @@ class ProgressController:
         # advance overall by delta steps
         self._step_ui(delta)
 
+        # If post-processing is complete, set progress bar and labels to 100%
+        if current >= total and total > 0:
+            self.progress_var.set(100)
+            self.status_label.config(text="100% | Time remaining: 00:00")
+            self.post_label.config(text="Post-processing: complete")
+            self.root.update_idletasks()
+
     def show_post_start(self):
         # Don't change done_steps or total_steps here - they're already correct
         # Just update the UI to show post-processing has started
