@@ -8,8 +8,6 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from tqdm import tqdm
 from transformers import (
-    M2M100ForConditionalGeneration,
-    M2M100Tokenizer,
     AutoTokenizer,
     AutoModelForSeq2SeqLM,
     pipeline,
@@ -17,4 +15,4 @@ from transformers import (
 )
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-selected_engine = None
+selected_engine = "nllb"  # Default and only supported engine

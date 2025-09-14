@@ -217,7 +217,7 @@ def demo_gui_integration():
     
     print("\nExample GUI workflow:")
     print("1. User selects subtitle file")
-    print("2. Chooses translation model (NLLB/M2M100)")
+    print("2. Uses NLLB translation model")
     print("3. Sets confidence threshold (default: 0.6)")
     print("4. Enables context-aware \\N insertion")
     print("5. Selects enhanced glossary")

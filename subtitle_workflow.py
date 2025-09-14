@@ -4,7 +4,7 @@ import re
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from utils import load_subtitle_lines, save_subtitle_lines
-from models import get_m2m100_model, get_nllb_globals
+from models import get_nllb_globals
 from config import DEVICE, selected_engine as global_selected_engine
 from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
 
@@ -26,28 +26,19 @@ def _get_target_lang_from_code(lang_code):
 ## NLLB language code map (extend as needed)
 def model_setup():
     global TRANS_MODEL, TRANS_TOKENIZER
-    if global_selected_engine == "nllb":
-        TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
-        TRANS_MODEL.eval()
-    else:
-        TRANS_MODEL, TRANS_TOKENIZER = get_m2m100_model()
-        TRANS_MODEL.eval()
+    # Always use NLLB as the only supported model
+    TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
+    TRANS_MODEL.eval()
 
-# Language code maps for each model
+# Language code maps for NLLB
 NLLB_LANG = {
     "en": "eng_Latn",
     "pl": "pol_Latn",
 }
-M2M100_LANG = {
-    "en": "en",
-    "pl": "pl",
-}
 
-def get_model_lang_code(lang, model_type):
-    if model_type == "nllb":
-        return NLLB_LANG.get(lang, lang)
-    else:
-        return M2M100_LANG.get(lang, lang)
+def get_model_lang_code(lang, model_type="nllb"):
+    # Always use NLLB language codes
+    return NLLB_LANG.get(lang, lang)
 
 def load_nllb_13b():
     model_id = "facebook/nllb-200-1.3B"
@@ -183,8 +174,8 @@ def translate_with_context_nllb(
         grouped_clean.append(clean)
         grouped_ph_maps.append(ph_map)
 
-    # Detect model type by tokenizer/model class name
-    model_type = "nllb" if hasattr(tokenizer, "lang_code_to_token") and hasattr(tokenizer, "set_src_lang_special_tokens") else "m2m100"
+    # Use NLLB as the only supported model type
+    model_type = "nllb"
     src_code = get_model_lang_code(src_lang, model_type)
     tgt_code = get_model_lang_code(tgt_lang, model_type)
 
@@ -351,19 +342,15 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
     translated = []
     total_lines = len(lines)
 
-    # Detect model type by tokenizer/model class name
-    model_type = "nllb" if hasattr(TRANS_TOKENIZER, "lang_code_to_token") and hasattr(TRANS_TOKENIZER, "set_src_lang_special_tokens") else "m2m100"
+    # Use NLLB as the only supported model type
+    model_type = "nllb"
     src_code = get_model_lang_code(src_lang, model_type)
     tgt_code = get_model_lang_code(tgt_lang, model_type)
     
-    # Setup tokenizer based on model type
-    if model_type == "nllb":
-        TRANS_TOKENIZER.src_lang = src_code
-        tgt_id = TRANS_TOKENIZER.convert_tokens_to_ids(tgt_code)
-        bos_token_id = tgt_id
-    else:
-        TRANS_TOKENIZER.src_lang = src_code
-        bos_token_id = TRANS_TOKENIZER.get_lang_id(get_model_lang_code(tgt_lang, model_type))
+    # Setup NLLB tokenizer
+    TRANS_TOKENIZER.src_lang = src_code
+    tgt_id = TRANS_TOKENIZER.convert_tokens_to_ids(tgt_code)
+    bos_token_id = tgt_id
 
     for i in range(0, total_lines, batch_size):
         batch = lines[i: i + batch_size]

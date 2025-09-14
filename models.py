@@ -1,17 +1,8 @@
 import torch
 from transformers import (
-    M2M100ForConditionalGeneration, M2M100Tokenizer,
     AutoTokenizer, AutoModelForSeq2SeqLM, AutoModelForTokenClassification,
 )
 from config import DEVICE
-
-# Translation model loader
-def get_m2m100_model(model_name="facebook/m2m100_418M"):
-    tokenizer = M2M100Tokenizer.from_pretrained(model_name)
-    model = M2M100ForConditionalGeneration.from_pretrained(model_name)
-    model = model.to(DEVICE)  # type: ignore
-    model.eval()              # inference mode
-    return model, tokenizer
 # Grammar correction model
 
 GRAMMAR_MODEL = AutoModelForSeq2SeqLM.from_pretrained(
@@ -59,10 +50,4 @@ def get_nllb_globals():
     dtype = torch.float16 if torch.cuda.is_available() else torch.float32
     model = AutoModelForSeq2SeqLM.from_pretrained(model_name, torch_dtype=dtype).to(device).eval()
     return model, tokenizer, device
-
-def get_translation_model():
-    model_name = "facebook/m2m100_418M"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name).to("cuda" if torch.cuda.is_available() else "cpu")
-    return model, tokenizer
 
