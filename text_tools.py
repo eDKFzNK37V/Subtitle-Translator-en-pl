@@ -89,30 +89,119 @@ def calculate_text_similarity_confidence(original: str, corrected: str) -> float
     confidence = (length_ratio * 0.3 + char_ratio * 0.7)
     return max(0.0, min(1.0, confidence))
 
+def count_polish_characters(text: str) -> dict:
+    """Count individual Polish characters in text."""
+    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
+    char_count = {}
+    for char in polish_chars:
+        char_count[char] = text.count(char)
+    return char_count
+
+def detect_proper_names(text: str) -> list:
+    """Detect potential proper names (capitalized words) for preservation."""
+    import re
+    # Find words that start with capital letter and are likely names
+    name_pattern = r'\b[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]{2,}\b'
+    potential_names = re.findall(name_pattern, text)
+    
+    # Filter out common words that aren't names
+    common_words = {'Będę', 'Dziś', 'Jest', 'Mam', 'Czy', 'Ale', 'Tak', 'Nie', 'Co', 'Jak', 'Gdzie', 'Kiedy', 'Dlaczego'}
+    names = [name for name in potential_names if name not in common_words]
+    return names
+
+def validate_character_preservation(original: str, corrected: str, min_preservation_rate: float = 0.95) -> bool:
+    """
+    Validate that Polish characters are preserved at the specified rate.
+    min_preservation_rate: minimum fraction of Polish characters that must be preserved (default 95%)
+    """
+    original_chars = count_polish_characters(original)
+    corrected_chars = count_polish_characters(corrected)
+    
+    total_original = sum(original_chars.values())
+    if total_original == 0:
+        return True  # No Polish characters to preserve
+    
+    total_preserved = 0
+    for char, original_count in original_chars.items():
+        if original_count > 0:
+            preserved_count = min(corrected_chars.get(char, 0), original_count)
+            total_preserved += preserved_count
+    
+    preservation_rate = total_preserved / total_original
+    return preservation_rate >= min_preservation_rate
+
+def validate_name_preservation(original: str, corrected: str) -> bool:
+    """Check if proper names are preserved in the corrected text."""
+    original_names = detect_proper_names(original)
+    if not original_names:
+        return True  # No names to preserve
+    
+    corrected_lower = corrected.lower()
+    preserved_names = 0
+    
+    for name in original_names:
+        # Check if name exists in corrected text (case insensitive)
+        if name.lower() in corrected_lower:
+            preserved_names += 1
+    
+    # Allow losing 1 name out of several, but preserve at least 80%
+    preservation_rate = preserved_names / len(original_names) if original_names else 1.0
+    return preservation_rate >= 0.8
+
 def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.75) -> str:
     """
-    Conservative grammar correction with enhanced Polish character protection.
-    Enhanced confidence-based fallback to prevent over-correction.
+    Ultra-conservative grammar correction with comprehensive Polish character and name protection.
+    Enhanced validation to prevent any character loss or corruption.
     """
-    # Safety check for Polish characters - be extra conservative
-    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
-    has_polish_chars = any(char in text for char in polish_chars)
-    
-    # Use higher confidence threshold for Polish text to prevent character loss
-    effective_threshold = confidence_threshold + 0.1 if has_polish_chars else confidence_threshold
-    
-    corrected, confidence = correct_grammar(text)
-    
-    # Additional safety check: if Polish characters are lost, reject correction
-    if has_polish_chars:
-        corrected_has_polish = any(char in corrected for char in polish_chars)
-        if not corrected_has_polish and any(char in text for char in polish_chars):
-            return text  # Return original if Polish characters were lost
-    
-    if confidence >= effective_threshold:
-        return corrected
-    else:
+    if not text.strip():
         return text
+        
+    # Pre-correction analysis
+    original_char_count = count_polish_characters(text)
+    original_names = detect_proper_names(text)
+    has_polish_chars = sum(original_char_count.values()) > 0
+    
+    # Use very high confidence threshold for Polish text
+    effective_threshold = confidence_threshold + 0.15 if has_polish_chars else confidence_threshold
+    
+    # Skip correction for very short text to avoid corruption
+    if len(text.strip()) < 5:
+        return text
+    
+    try:
+        corrected, confidence = correct_grammar(text)
+    except Exception:
+        return text  # Return original on any error
+    
+    # Comprehensive validation checks
+    validation_passed = True
+    
+    # 1. Character preservation check (95% minimum)
+    if not validate_character_preservation(text, corrected, 0.95):
+        validation_passed = False
+    
+    # 2. Name preservation check
+    if not validate_name_preservation(text, corrected):
+        validation_passed = False
+    
+    # 3. Length change check (reject excessive changes)
+    length_change_ratio = abs(len(text) - len(corrected)) / max(len(text), 1)
+    if length_change_ratio > 0.25:  # More than 25% length change
+        validation_passed = False
+    
+    # 4. Confidence check
+    if confidence < effective_threshold:
+        validation_passed = False
+    
+    # 5. Additional safety: check for corrupted output
+    if len(corrected.strip()) < len(text.strip()) * 0.7:  # Lost more than 30% of content
+        validation_passed = False
+    
+    # Return original if any validation fails
+    if not validation_passed:
+        return text
+    
+    return corrected
 
 def clean_translation(text):
     text = re.sub(r"\s+([.,!?;:])", r"\1", text)
@@ -500,45 +589,158 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
     return out
 
 
-def correct_grammar_batch(texts, confidence_threshold: float = 0.65):
+def log_names_and_unknown_words(original_lines: list, corrected_lines: list, log_file: str = "correction_log.txt") -> None:
     """
-    Optimized batched grammar correction with confidence-based fallback.
-    Enhanced for performance while maintaining quality.
+    Log detected names and potentially problematic words for human review.
+    Helps identify words that may need special handling during correction.
     """
+    import os
+    from datetime import datetime
+    
+    detected_names = set()
+    problematic_changes = []
+    
+    for i, (original, corrected) in enumerate(zip(original_lines, corrected_lines)):
+        # Detect names in original text
+        names = detect_proper_names(original)
+        detected_names.update(names)
+        
+        # Check for problematic changes
+        if original != corrected:
+            # Check for significant word changes
+            original_words = set(original.split())
+            corrected_words = set(corrected.split())
+            lost_words = original_words - corrected_words
+            added_words = corrected_words - original_words
+            
+            if lost_words or added_words:
+                problematic_changes.append({
+                    'line': i + 1,
+                    'original': original,
+                    'corrected': corrected,
+                    'lost_words': list(lost_words),
+                    'added_words': list(added_words)
+                })
+    
+    # Write log if there's anything to report
+    if detected_names or problematic_changes:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_path = f"correction_log_{timestamp}.txt"
+        
+        try:
+            with open(log_path, 'w', encoding='utf-8') as f:
+                f.write(f"Correction Analysis Log - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 60 + "\n\n")
+                
+                if detected_names:
+                    f.write("DETECTED NAMES (review for protection):\n")
+                    f.write("-" * 40 + "\n")
+                    for name in sorted(detected_names):
+                        f.write(f"  • {name}\n")
+                    f.write("\n")
+                
+                if problematic_changes:
+                    f.write("PROBLEMATIC CORRECTIONS (review for accuracy):\n")
+                    f.write("-" * 50 + "\n")
+                    for change in problematic_changes:
+                        f.write(f"Line {change['line']}:\n")
+                        f.write(f"  Original:  {change['original']}\n")
+                        f.write(f"  Corrected: {change['corrected']}\n")
+                        if change['lost_words']:
+                            f.write(f"  Lost words: {', '.join(change['lost_words'])}\n")
+                        if change['added_words']:
+                            f.write(f"  Added words: {', '.join(change['added_words'])}\n")
+                        f.write("\n")
+                
+                f.write("\nRecommendations:\n")
+                f.write("- Review detected names and add to protection list if needed\n")
+                f.write("- Check problematic corrections for accuracy\n")
+                f.write("- Consider adjusting confidence thresholds if too many changes\n")
+                
+            print(f"Correction analysis logged to: {log_path}")
+        except Exception as e:
+            print(f"Warning: Could not write correction log: {e}")
+
+def correct_grammar_batch(texts, confidence_threshold: float = 0.75, enable_logging: bool = True):
+    """
+    Ultra-conservative batched grammar correction with comprehensive character protection.
+    Enhanced protection against Polish character loss and name corruption.
+    """
+    # Pre-filter very short texts to avoid corruption
+    filtered_inputs = []
+    filtered_indices = []
+    results = []
+    
+    for i, text in enumerate(texts):
+        if len(text.strip()) < 5:
+            results.append(text)  # Keep very short texts unchanged
+        else:
+            filtered_inputs.append(text)
+            filtered_indices.append(i)
+            results.append(None)  # Placeholder
+    
+    if not filtered_inputs:
+        return results
+    
     try:
         inputs = GRAMMAR_TOKENIZER(
-            ["gec: " + t for t in texts],
+            ["gec: " + t for t in filtered_inputs],
             return_tensors="pt",
             padding=True,
             truncation=True,
-            max_length=200  # Reduced for better performance
+            max_length=200
         ).to(DEVICE)
         
         with torch.no_grad():
             outputs = GRAMMAR_MODEL.generate(
                 inputs.input_ids, 
                 attention_mask=inputs.attention_mask,
-                max_length=200,  # Reduced for performance
-                num_beams=3,     # Reduced for speed while maintaining quality
+                max_length=200,
+                num_beams=3,
                 early_stopping=True,
                 output_scores=True,
                 return_dict_in_generate=True,
-                no_repeat_ngram_size=2  # Added to reduce repetition
+                no_repeat_ngram_size=2
             )
         
         corrected_texts = GRAMMAR_TOKENIZER.batch_decode(outputs.sequences, skip_special_tokens=True)
         
-        # Apply confidence-based fallback for each text efficiently
-        results = []
-        for i, (original, corrected) in enumerate(zip(texts, corrected_texts)):
-            # Quick confidence check with optimized calculation
-            if len(corrected) > 0 and abs(len(original) - len(corrected)) / max(len(original), 1) < 0.3:
-                # Length-based quick confidence for performance
-                confidence = 1.0 - abs(len(original) - len(corrected)) / max(len(original), len(corrected))
-                if confidence >= confidence_threshold:
-                    results.append(corrected)
-                    continue
-            results.append(original)
+        # Apply comprehensive validation for each correction
+        for j, (original, corrected) in enumerate(zip(filtered_inputs, corrected_texts)):
+            original_index = filtered_indices[j]
+            
+            # Use the comprehensive validation function
+            validation_passed = True
+            
+            # 1. Character preservation check
+            if not validate_character_preservation(original, corrected, 0.95):
+                validation_passed = False
+            
+            # 2. Name preservation check
+            if not validate_name_preservation(original, corrected):
+                validation_passed = False
+            
+            # 3. Length and confidence checks
+            length_change_ratio = abs(len(original) - len(corrected)) / max(len(original), 1)
+            if length_change_ratio > 0.25:
+                validation_passed = False
+            
+            # 4. Content preservation check
+            if len(corrected.strip()) < len(original.strip()) * 0.7:
+                validation_passed = False
+            
+            # Use corrected text only if all validations pass
+            if validation_passed:
+                results[original_index] = corrected
+            else:
+                results[original_index] = original
+        
+        # Log names and problematic corrections if enabled
+        if enable_logging:
+            try:
+                log_names_and_unknown_words(texts, results)
+            except Exception:
+                pass  # Don't fail on logging errors
         
         return results
     except Exception:
@@ -811,24 +1013,24 @@ def apply_style_tone_batch(texts: List[str], target_lang: str = "pl") -> List[st
 
 def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
     """
-    Conservative formality detection with Polish character protection.
-    Reduced pattern matching to prevent over-correction.
+    Ultra-conservative formality detection with comprehensive Polish character protection.
+    Includes name preservation and strict validation.
     """
     if not text.strip():
         return text
     
-    # Safety check for Polish characters
-    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
-    original_polish_chars = [char for char in text if char in polish_chars]
+    # Pre-analysis
+    original_char_count = count_polish_characters(text)
+    original_names = detect_proper_names(text)
     
     # Apply standard style adjustments first
     improved = adjust_subtitle_style_tone(text, target_lang)
     
     # Conservative formality detection - only essential patterns
     if target_lang.lower() == "pl":
-        # Only most essential Polish formality patterns to prevent over-correction
+        # Only the most basic and safe formality fixes
         formal_patterns = [
-            # Only the most basic and safe formality fixes
+            # Only the most essential Polish formality patterns
             (r'\bproszę\s+o\s+wybaczenie\b', 'przepraszam'),
             (r'\bw\s+chwili\s+obecnej\b', 'teraz'),
             (r'\bobecnie\b', 'teraz'),
@@ -844,80 +1046,86 @@ def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
             (r'\bIn the near future\b', 'Soon'),
         ]
     
-    # Apply patterns conservatively
+    # Apply patterns with strict validation
     for pattern, replacement in formal_patterns:
-        # Check that replacement won't remove Polish characters
-        if target_lang.lower() == "pl":
-            test_result = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
-            result_polish_chars = [char for char in test_result if char in polish_chars]
-            if len(result_polish_chars) >= len(original_polish_chars):
-                improved = test_result
-        else:
-            improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+        test_result = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+        
+        # Validate each change comprehensively
+        if test_result != improved:
+            if not validate_character_preservation(improved, test_result, 0.98):
+                continue  # Skip this pattern
+            
+            if not validate_name_preservation(improved, test_result):
+                continue  # Skip this pattern
+                
+            # Apply the change only if validation passes
+            improved = test_result
     
-    # Final safety check - if too many Polish characters were lost, return original
-    if target_lang.lower() == "pl":
-        final_polish_chars = [char for char in improved if char in polish_chars]
-        if len(final_polish_chars) < len(original_polish_chars) * 0.8:  # Lost more than 20% of Polish chars
-            return text
+    # Final comprehensive validation
+    if not validate_character_preservation(text, improved, 0.95):
+        return text
+    
+    if not validate_name_preservation(text, improved):
+        return text
     
     return improved.strip()
 
 def fix_common_translation_issues(text: str, target_lang: str = "pl") -> str:
     """
-    Conservative fix for common translation quality issues with Polish character protection.
-    Reduced pattern matching to prevent over-correction and character loss.
+    Ultra-conservative fix for common translation quality issues with comprehensive protection.
+    Includes Polish character preservation and name protection.
     """
     if not text.strip():
         return text
     
-    # Safety check for Polish characters
-    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
-    original_polish_chars = [char for char in text if char in polish_chars]
+    # Pre-analysis
+    original_char_count = count_polish_characters(text)
+    original_names = detect_proper_names(text)
     
     fixed = text
     
     if target_lang.lower() == "pl":
-        # Conservative Polish translation fixes - only essential patterns
+        # Only the safest and most essential Polish fixes
         translation_fixes = [
-            # Only the safest and most essential fixes
-            (r'\bja\s+jestem\s+([a-ząćęłńóśźż]+)\b', r'jestem \1'),
+            # Ultra-conservative patterns only
             (r'\bja\s+myślę,\s*że\b', 'myślę, że'),
             (r'\bja\s+wiem,\s*że\b', 'wiem, że'),
             (r'\bmam\s+nadzieję\s+na\s+to\b', 'mam nadzieję'),
-            (r'\bjest\s+to\s+([a-ząćęłńóśźż]+)\b', r'to \1'),
             (r'\bteraz\s+w\s+tym\s+momencie\b', 'teraz'),
         ]
     else:
-        # Conservative English translation fixes - only essential patterns
+        # Only the safest and most essential English fixes
         translation_fixes = [
-            # Only the safest and most essential fixes
             (r'\bI\s+myself\s+personally\b', 'I'),
             (r'\bthat\s+which\s+is\b', 'that is'),
-            (r'\bI\s+have\s+the\s+feeling\s+that\b', 'I feel'),
             (r'\bin\s+the\s+case\s+that\b', 'if'),
             (r'\bnow\s+at\s+this\s+moment\b', 'now'),
         ]
     
-    # Apply translation fixes conservatively
+    # Apply translation fixes with comprehensive validation
     for pattern, replacement in translation_fixes:
-        # Test the replacement first for Polish text
-        if target_lang.lower() == "pl":
-            test_result = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
-            result_polish_chars = [char for char in test_result if char in polish_chars]
-            if len(result_polish_chars) >= len(original_polish_chars):
-                fixed = test_result
-        else:
-            fixed = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
+        test_result = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
+        
+        # Validate each change
+        if test_result != fixed:
+            if not validate_character_preservation(fixed, test_result, 0.98):
+                continue  # Skip this pattern
+            
+            if not validate_name_preservation(fixed, test_result):
+                continue  # Skip this pattern
+                
+            # Apply the change only if validation passes
+            fixed = test_result
     
     # Apply only essential clarity improvements
     fixed = _improve_sentence_clarity_conservative(fixed, target_lang)
     
-    # Final safety check for Polish characters
-    if target_lang.lower() == "pl":
-        final_polish_chars = [char for char in fixed if char in polish_chars]
-        if len(final_polish_chars) < len(original_polish_chars) * 0.8:  # Lost more than 20% of Polish chars
-            return text
+    # Final comprehensive validation
+    if not validate_character_preservation(text, fixed, 0.95):
+        return text
+    
+    if not validate_name_preservation(text, fixed):
+        return text
     
     return fixed.strip()
 

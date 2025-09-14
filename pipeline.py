@@ -27,7 +27,7 @@ MAX_CHARS_FOR_MODELS = 800
 LT_TIMEOUT = 1.2          # Reduced timeout for faster processing
 MAX_WORKERS_LT = 6        # Optimized LT parallelism
 CORR_BATCH_SIZE = 24      # Optimized correction batch size
-CONFIDENCE_THRESHOLD = 0.75  # Higher confidence threshold to prevent over-correction
+CONFIDENCE_THRESHOLD = 0.80  # Increased confidence threshold for better protection
 
 def _clamp(text: str, max_chars: int = MAX_CHARS_FOR_MODELS) -> str:
     return text if len(text) <= max_chars else text[:max_chars]
