@@ -384,20 +384,22 @@ def run_gui_nllb():
             return
 
         controller.set_post_total(len(translated))
-
-        try:
-            warmup_sentence = (
-                "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
-                else "This is a test sentence."
-            )
-            correct_text_batch_nllb([warmup_sentence], src_lang.get(), tgt_lang.get())
-        except Exception as warm_err:
-            logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
-
+        
+        # Ensure translation phase is complete before starting post-processing
         root.after(0, controller.show_post_start)
 
         def do_post():
             try:
+                # Warm-up correction models AFTER post-processing officially starts
+                try:
+                    warmup_sentence = (
+                        "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
+                        else "This is a test sentence."
+                    )
+                    correct_text_batch_nllb([warmup_sentence], src_lang.get(), tgt_lang.get())
+                except Exception as warm_err:
+                    logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
+                
                 logger = SubtitleLogger(file_path.get(), tgt_lang.get(), idx_map=idx_map)
                 total = len(translated)
                 corrected_all = []

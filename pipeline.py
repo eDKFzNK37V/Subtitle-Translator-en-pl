@@ -27,7 +27,7 @@ MAX_CHARS_FOR_MODELS = 800
 LT_TIMEOUT = 1.2          # Reduced timeout for faster processing
 MAX_WORKERS_LT = 6        # Optimized LT parallelism
 CORR_BATCH_SIZE = 24      # Optimized correction batch size
-CONFIDENCE_THRESHOLD = 0.65  # Slightly higher confidence threshold for quality
+CONFIDENCE_THRESHOLD = 0.75  # Higher confidence threshold to prevent over-correction
 
 def _clamp(text: str, max_chars: int = MAX_CHARS_FOR_MODELS) -> str:
     return text if len(text) <= max_chars else text[:max_chars]
@@ -177,12 +177,19 @@ def correct_text_batch(lines, lang, progress_callback=None):
             with ThreadPoolExecutor(max_workers=MAX_WORKERS_LT) as ex:
                 cleans = list(ex.map(lt_fix, cleans))
 
-        # 5) Enhanced style/tone adjustment with quality fixes for subtitle context
+        # 5) Conservative style/tone adjustment with quality fixes for subtitle context
         try:
-            # Apply comprehensive quality improvements
+            # Apply only essential quality improvements to prevent over-correction
             from text_tools import fix_common_translation_issues
+            # Only apply style fixes if text is clearly problematic
+            original_length = sum(len(text) for text in cleans)
             cleans = [fix_common_translation_issues(text, lang_lower) for text in cleans]
-            cleans = [detect_and_improve_formality(text, lang_lower) for text in cleans]
+            
+            # Check for excessive changes and revert if too many
+            corrected_length = sum(len(text) for text in cleans)
+            if abs(original_length - corrected_length) / max(original_length, 1) > 0.3:
+                # Too many changes, revert to safer corrections
+                cleans = [detect_and_improve_formality(text, lang_lower) for text in cleans]
         except Exception:
             # Fallback to basic style adjustment
             try:

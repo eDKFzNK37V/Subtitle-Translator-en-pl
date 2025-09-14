@@ -414,78 +414,69 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
 
 def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "") -> str:
     """
-    Apply immediate quality enhancements to translated text for subtitle context.
-    Optimized for performance while maintaining quality improvements.
+    Conservative immediate quality enhancements for translated text.
+    Reduced pattern matching to prevent over-correction and character loss.
     """
     if not translated_text.strip():
         return translated_text
     
+    # Safety check for Polish characters
+    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
+    original_polish_chars = [char for char in translated_text if char in polish_chars]
+    
     enhanced = translated_text
     
-    # Language-specific immediate improvements (most critical patterns only)
+    # Conservative language-specific improvements - only essential patterns
     if target_lang.lower() == "pl":
-        # Polish subtitle optimizations - prioritized for performance
+        # Polish subtitle optimizations - only the safest patterns
         immediate_fixes = [
-            # Most common awkward constructions (high impact)
+            # Only essential fixes that are very safe
             (r'\bja jestem\b', 'jestem'),
-            (r'\bto jest bardzo\b', 'to bardzo'),
-            (r'\bmusisz wiedzieć, że\b', 'musisz wiedzieć:'),
-            (r'\bchcę ci powiedzieć, że\b', 'słuchaj:'),
-            
-            # Critical formal patterns (high frequency)
-            (r'\bpragnę\s+([a-ząćęłńóśźż]+)\b', r'chcę \1'),
-            (r'\bmam\s+zamiar\b', 'zamierzam'),
-            (r'\bw\s+przypadku\s+gdy\b', 'jeśli'),
-            
-            # Essential speech patterns 
+            (r'\bobecnie\b', 'teraz'),
             (r'\btak,\s*tak\b', 'tak'),
             (r'\bnie,\s*nie\b', 'nie'),
-            (r'\bobecnie\b', 'teraz'),
         ]
     else:
-        # English subtitle optimizations - prioritized for performance
+        # English subtitle optimizations - only essential patterns
         immediate_fixes = [
-            # Most common contractions (high impact)
+            # Only essential contractions that are very safe
             (r'\bI will\b', "I'll"),
             (r'\byou will\b', "you'll"),
             (r'\bwe will\b', "we'll"),
-            (r'\bthey will\b', "they'll"),
-            
-            # Critical conversational patterns
-            (r'\bI have got\b', "I've got"),
-            (r'\bI need to tell you that\b', "I need to tell you:"),
-            (r'\bIt is necessary to\b', "You need to"),
-            
-            # Essential redundancy removal
             (r'\byes,\s*yes\b', 'yes'),
             (r'\bno,\s*no\b', 'no'),
-            
-            # Common formal transitions
-            (r'\bIn addition to that\b', 'Also'),
-            (r'\bFurthermore\b', 'Also'),
         ]
     
-    # Apply immediate fixes efficiently
+    # Apply immediate fixes conservatively
     for pattern, replacement in immediate_fixes:
-        enhanced = re.sub(pattern, replacement, enhanced, flags=re.IGNORECASE)
+        # Test replacement for Polish text
+        if target_lang.lower() == "pl":
+            test_result = re.sub(pattern, replacement, enhanced, flags=re.IGNORECASE)
+            result_polish_chars = [char for char in test_result if char in polish_chars]
+            if len(result_polish_chars) >= len(original_polish_chars):
+                enhanced = test_result
+        else:
+            enhanced = re.sub(pattern, replacement, enhanced, flags=re.IGNORECASE)
     
-    # Universal subtitle optimizations (streamlined)
-    enhanced = _apply_universal_subtitle_fixes(enhanced)
+    # Apply only essential universal fixes
+    enhanced = _apply_universal_subtitle_fixes_conservative(enhanced)
+    
+    # Final safety check for Polish characters
+    if target_lang.lower() == "pl":
+        final_polish_chars = [char for char in enhanced if char in polish_chars]
+        if len(final_polish_chars) < len(original_polish_chars) * 0.9:  # Lost more than 10% of Polish chars
+            return translated_text
     
     return enhanced.strip()
 
-def _apply_universal_subtitle_fixes(text: str) -> str:
+def _apply_universal_subtitle_fixes_conservative(text: str) -> str:
     """
-    Apply universal fixes that improve subtitle readability across languages.
-    Optimized for performance with essential fixes only.
+    Conservative universal fixes for subtitle readability.
+    Only essential fixes to prevent over-correction.
     """
-    # Essential spacing and punctuation fixes
+    # Only essential spacing and punctuation fixes
     text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single
     text = re.sub(r'\s+([.!?,:;])', r'\1', text)  # Remove space before punctuation
-    text = re.sub(r'([.!?])\s*([.!?])', r'\1', text)  # Remove duplicate punctuation
-    
-    # Basic sentence flow (essential only)
-    text = re.sub(r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), text)
     
     # Capitalize first letter if needed
     if text and text[0].islower():

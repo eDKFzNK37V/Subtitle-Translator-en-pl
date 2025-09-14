@@ -89,14 +89,27 @@ def calculate_text_similarity_confidence(original: str, corrected: str) -> float
     confidence = (length_ratio * 0.3 + char_ratio * 0.7)
     return max(0.0, min(1.0, confidence))
 
-def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.65) -> str:
+def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.75) -> str:
     """
-    Optimized grammar correction with confidence-based fallback.
-    Enhanced performance while maintaining quality standards.
+    Conservative grammar correction with enhanced Polish character protection.
+    Enhanced confidence-based fallback to prevent over-correction.
     """
+    # Safety check for Polish characters - be extra conservative
+    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
+    has_polish_chars = any(char in text for char in polish_chars)
+    
+    # Use higher confidence threshold for Polish text to prevent character loss
+    effective_threshold = confidence_threshold + 0.1 if has_polish_chars else confidence_threshold
+    
     corrected, confidence = correct_grammar(text)
     
-    if confidence >= confidence_threshold:
+    # Additional safety check: if Polish characters are lost, reject correction
+    if has_polish_chars:
+        corrected_has_polish = any(char in corrected for char in polish_chars)
+        if not corrected_has_polish and any(char in text for char in polish_chars):
+            return text  # Return original if Polish characters were lost
+    
+    if confidence >= effective_threshold:
         return corrected
     else:
         return text
@@ -798,303 +811,137 @@ def apply_style_tone_batch(texts: List[str], target_lang: str = "pl") -> List[st
 
 def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
     """
-    Enhanced formality detection and natural language improvement for subtitle context.
-    Now includes comprehensive conversational pattern detection and quality assessment.
+    Conservative formality detection with Polish character protection.
+    Reduced pattern matching to prevent over-correction.
     """
     if not text.strip():
         return text
+    
+    # Safety check for Polish characters
+    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
+    original_polish_chars = [char for char in text if char in polish_chars]
     
     # Apply standard style adjustments first
     improved = adjust_subtitle_style_tone(text, target_lang)
     
-    # Enhanced formality detection and correction
+    # Conservative formality detection - only essential patterns
     if target_lang.lower() == "pl":
-        # Comprehensive Polish formality and naturalness patterns
+        # Only most essential Polish formality patterns to prevent over-correction
         formal_patterns = [
-            # Basic formality
-            (r'\bpoproszę\s+o\b', 'poproszę'),
-            (r'\bmam\s+nadzieję,?\s*że\b', 'mam nadzieję, że'),
-            (r'\bchciałbym\s+się\s+dowiedzieć\b', 'chcę wiedzieć'),
-            (r'\bczy\s+mógłbym\s+prosić\b', 'czy mogę prosić'),
-            (r'\bjestem\s+bardzo\s+wdzięczny\b', 'dziękuję bardzo'),
-            (r'\bzgadzam\s+się\s+z\s+panem/panią\b', 'zgadzam się'),
-            (r'\bproszę\s+o\s+wybaczenie\b', 'przepraszam'),
-            (r'\bbyć\s+może\s+było\s+by\b', 'może byłoby'),
-            
-            # Enhanced conversational patterns
+            # Only the most basic and safe formality fixes
             (r'\bchciałbym\s+ci\s+powiedzieć\b', 'powiem ci'),
-            (r'\bmuszę\s+ci\s+coś\s+powiedzieć\b', 'słuchaj'),
-            (r'\bpozwól,?\s*że\s+ci\s+powiem\b', 'powiem ci'),
-            (r'\bmam\s+do\s+ciebie\s+prośbę\b', 'poproszę cię'),
-            (r'\bchciałbym\s+żebyś\s+wiedział\b', 'musisz wiedzieć'),
-            (r'\bpragnę\s+aby\b', 'chcę żeby'),
-            (r'\bmam\s+zamiar\s+się\s+dowiedzieć\b', 'dowiem się'),
-            
-            # Awkward constructions
-            (r'\bw\s+ten\s+sposób\s+będziemy\b', 'będziemy'),
-            (r'\bw\s+tej\s+chwili\s+jestem\b', 'teraz jestem'),
-            (r'\bw\s+związku\s+z\s+powyższym\b', 'dlatego'),
-            (r'\bna\s+podstawie\s+tego\b', 'przez to'),
-            (r'\bz\s+uwagi\s+na\s+fakt,?\s*że\b', 'bo'),
-            (r'\bjeśli\s+chodzi\s+o\b', 'co do'),
-            (r'\bw\s+odniesieniu\s+do\b', 'co do'),
-            
-            # Unnatural speech patterns
-            (r'\bobecnie\s+znajduję\s+się\b', 'jestem'),
-            (r'\baktualnie\s+wykonuję\b', 'robię'),
+            (r'\bmam\s+nadzieję,?\s*że\b', 'mam nadzieję, że'),
+            (r'\bproszę\s+o\s+wybaczenie\b', 'przepraszam'),
             (r'\bw\s+chwili\s+obecnej\b', 'teraz'),
-            (r'\bw\s+najbliższym\s+czasie\b', 'niedługo'),
-            (r'\bw\s+przyszłości\b', 'później'),
-            (r'\bw\s+przeszłości\b', 'wcześniej'),
-            
-            # Complex verb forms to simpler
-            (r'\bzostanie\s+wykonane\b', 'zrobimy to'),
-            (r'\bbędzie\s+realizowane\b', 'zrobimy'),
-            (r'\bmieć\s+miejsce\b', 'się wydarzyć'),
-            (r'\bodbywa\s+się\b', 'dzieje się'),
+            (r'\bobecnie\b', 'teraz'),
         ]
     else:
-        # Enhanced English formality and naturalness patterns
+        # Only most essential English formality patterns
         formal_patterns = [
-            # Basic formality fixes
-            (r'\bI would be delighted to\b', "I'd love to"),
-            (r'\bI would appreciate it if\b', "I'd appreciate if"),
+            # Only the most basic and safe formality fixes
+            (r'\bI would like to\b', "I'd like to"),
             (r'\bCould you please\b', 'Can you'),
-            (r'\bWould you be so kind as to\b', 'Could you'),
             (r'\bI beg your pardon\b', 'Sorry'),
-            (r'\bAllow me to\b', "Let me"),
-            (r'\bI must confess\b', "I have to say"),
-            (r'\bI dare say\b', "I'd say"),
-            (r'\bIf I may\b', "If I can"),
-            (r'\bForgive me for\b', "Sorry for"),
-            
-            # Enhanced conversational improvements
-            (r'\bI would like to inform you that\b', "I need to tell you:"),
-            (r'\bI wish to express my\b', "I want to say"),
-            (r'\bI am writing to inquire about\b', "I'm asking about"),
-            (r'\bI would be grateful if you could\b', "Can you"),
-            (r'\bI hope this message finds you well\b', "Hi"),
-            (r'\bI trust that\b', "I hope"),
-            (r'\bI am confident that\b', "I know"),
-            
-            # Awkward constructions
             (r'\bAt this point in time\b', 'Now'),
             (r'\bIn the near future\b', 'Soon'),
-            (r'\bIn the past\b', 'Before'),
-            (r'\bDuring the course of\b', 'During'),
-            (r'\bWith regard to\b', 'About'),
-            (r'\bIn connection with\b', 'About'),
-            (r'\bFor the purpose of\b', 'To'),
-            (r'\bIn order to achieve\b', 'To get'),
-            
-            # Unnatural speech patterns
-            (r'\bI am currently located at\b', "I'm at"),
-            (r'\bI am presently engaged in\b', "I'm doing"),
-            (r'\bI will proceed to\b', "I'll"),
-            (r'\bI shall endeavor to\b', "I'll try to"),
-            (r'\bIt is my intention to\b', "I plan to"),
-            (r'\bI have the pleasure of\b', "I get to"),
-            
-            # Passive to active voice
-            (r'\bwill be completed by\b', 'will finish'),
-            (r'\bis being done by\b', 'is doing'),
-            (r'\bwas performed by\b', 'did'),
-            (r'\bwill be handled by\b', 'will handle'),
         ]
     
+    # Apply patterns conservatively
     for pattern, replacement in formal_patterns:
-        improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+        # Check that replacement won't remove Polish characters
+        if target_lang.lower() == "pl":
+            test_result = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+            result_polish_chars = [char for char in test_result if char in polish_chars]
+            if len(result_polish_chars) >= len(original_polish_chars):
+                improved = test_result
+        else:
+            improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
     
-    # Apply additional naturalness improvements
-    improved = _improve_conversational_flow(improved, target_lang)
-    
-    return improved
-
-def _improve_conversational_flow(text: str, target_lang: str) -> str:
-    """
-    Improve conversational flow and naturalness for subtitle context.
-    """
-    if not text.strip():
-        return text
-    
-    improved = text
-    
+    # Final safety check - if too many Polish characters were lost, return original
     if target_lang.lower() == "pl":
-        # Polish conversational flow improvements
-        flow_patterns = [
-            # Better dialogue starters
-            (r'^słuchaj,\s*', ''),  # Remove redundant "listen"
-            (r'^wiesz\s+co,?\s*', ''),  # Remove redundant "you know what"
-            (r'^powiem\s+ci\s+co,?\s*', ''),  # Remove redundant "I'll tell you what"
-            
-            # Natural question patterns
-            (r'\bczy\s+ty\s+', 'czy '),
-            (r'\bczy\s+on\s+', 'czy '),
-            (r'\bczy\s+ona\s+', 'czy '),
-            
-            # Emotion and emphasis
-            (r'\bjest\s+bardzo\s+', 'jest '),
-            (r'\bto\s+jest\s+naprawdę\s+', 'to naprawdę '),
-            (r'\bbardzo\s+bardzo\s+', 'bardzo '),
-        ]
-    else:
-        # English conversational flow improvements  
-        flow_patterns = [
-            # Better dialogue starters
-            (r'^look,\s*', ''),  # Remove redundant "look"
-            (r'^you know,\s*', ''),  # Remove redundant "you know"
-            (r'^let me tell you,\s*', ''),  # Remove redundant starter
-            
-            # Natural question patterns
-            (r'\bdo you really\s+', 'do you '),
-            (r'\bdid you actually\s+', 'did you '),
-            (r'\bwill you truly\s+', 'will you '),
-            
-            # Emotion and emphasis
-            (r'\bis very very\s+', 'is very '),
-            (r'\bis really really\s+', 'is really '),
-            (r'\bso so\s+', 'so '),
-        ]
-    
-    for pattern, replacement in flow_patterns:
-        improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+        final_polish_chars = [char for char in improved if char in polish_chars]
+        if len(final_polish_chars) < len(original_polish_chars) * 0.8:  # Lost more than 20% of Polish chars
+            return text
     
     return improved.strip()
 
 def fix_common_translation_issues(text: str, target_lang: str = "pl") -> str:
     """
-    Fix common translation quality issues that create unpleasant or awkward sentences.
-    This function specifically targets problematic patterns that arise from machine translation.
+    Conservative fix for common translation quality issues with Polish character protection.
+    Reduced pattern matching to prevent over-correction and character loss.
     """
     if not text.strip():
         return text
     
+    # Safety check for Polish characters
+    polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
+    original_polish_chars = [char for char in text if char in polish_chars]
+    
     fixed = text
     
     if target_lang.lower() == "pl":
-        # Common Polish translation issues
+        # Conservative Polish translation fixes - only essential patterns
         translation_fixes = [
-            # Awkward word order fixes
+            # Only the safest and most essential fixes
             (r'\bja\s+jestem\s+([a-ząćęłńóśźż]+)\b', r'jestem \1'),
-            (r'\bty\s+jesteś\s+([a-ząćęłńóśźż]+)\b', r'jesteś \1'),
-            (r'\bon\s+jest\s+([a-ząćęłńóśźż]+)\b', r'jest \1'),
-            (r'\bona\s+jest\s+([a-ząćęłńóśźż]+)\b', r'jest \1'),
-            
-            # Redundant pronoun usage
             (r'\bja\s+myślę,\s*że\b', 'myślę, że'),
             (r'\bja\s+wiem,\s*że\b', 'wiem, że'),
-            (r'\bja\s+czuję,\s*że\b', 'czuję, że'),
-            (r'\bja\s+uważam,\s*że\b', 'uważam, że'),
-            
-            # Literal translation fixes
-            (r'\bmam\s+problem\s+z\b', 'nie mogę'),
-            (r'\bmam\s+trudności\s+z\b', 'trudno mi'),
-            (r'\brodze\s+problemy\b', 'stwarzam problemy'),
             (r'\bmam\s+nadzieję\s+na\s+to\b', 'mam nadzieję'),
-            
-            # Unnatural phrase patterns
             (r'\bjest\s+to\s+([a-ząćęłńóśźż]+)\b', r'to \1'),
-            (r'\bto\s+jest\s+to,\s*co\b', 'to co'),
-            (r'\bto\s+jest\s+miejsce,\s*gdzie\b', 'to miejsce gdzie'),
-            (r'\bto\s+jest\s+osoba,\s*która\b', 'to osoba która'),
-            
-            # Formal construction fixes
-            (r'\bzostać\s+([a-ząćęłńóśźż]+)ym\b', r'być \1ym'),
-            (r'\bstać\s+się\s+([a-ząćęłńóśźż]+)ym\b', r'zostać \1ym'),
-            (r'\budać\s+się\s+do\b', 'iść do'),
-            (r'\bprzybywać\s+do\b', 'przychodzić do'),
-            
-            # Emotional expression improvements
-            (r'\bjestem\s+zadowolony\s+z\s+tego\b', 'cieszę się'),
-            (r'\bjestem\s+niezadowolony\s+z\s+tego\b', 'nie podoba mi się to'),
-            (r'\bjestem\s+zły\s+na\s+ciebie\b', 'złoszczę się na ciebie'),
-            (r'\bjestem\s+szczęśliwy,?\s*że\b', 'cieszę się, że'),
-            
-            # Time and aspect improvements
             (r'\bteraz\s+w\s+tym\s+momencie\b', 'teraz'),
-            (r'\bw\s+tej\s+chwili\s+teraz\b', 'teraz'),
             (r'\bobecnie\s+w\s+tym\s+czasie\b', 'teraz'),
-            (r'\baktualnie\s+obecnie\b', 'teraz'),
         ]
     else:
-        # Common English translation issues
+        # Conservative English translation fixes - only essential patterns
         translation_fixes = [
-            # Redundant constructions
+            # Only the safest and most essential fixes
             (r'\bI\s+myself\s+personally\b', 'I'),
-            (r'\byou\s+yourself\s+personally\b', 'you'),
-            (r'\bhe\s+himself\s+personally\b', 'he'),
-            (r'\bshe\s+herself\s+personally\b', 'she'),
-            
-            # Awkward word order
             (r'\bthat\s+which\s+is\b', 'that is'),
-            (r'\bthose\s+which\s+are\b', 'those that are'),
-            (r'\bthe\s+thing\s+that\s+is\b', 'what is'),
-            (r'\bthe\s+place\s+where\s+it\s+is\b', 'where it is'),
-            
-            # Literal translation artifacts
             (r'\bI\s+have\s+the\s+feeling\s+that\b', 'I feel'),
-            (r'\bI\s+have\s+the\s+impression\s+that\b', 'I think'),
-            (r'\bI\s+have\s+the\s+opinion\s+that\b', 'I believe'),
-            (r'\bI\s+have\s+the\s+belief\s+that\b', 'I believe'),
-            
-            # Unnatural expressions
-            (r'\bit\s+is\s+that\s+which\b', 'it is what'),
-            (r'\bthis\s+is\s+that\s+which\b', 'this is what'),
-            (r'\bthat\s+is\s+the\s+thing\s+that\b', 'that is what'),
-            (r'\bthis\s+is\s+the\s+reason\s+why\b', 'this is why'),
-            
-            # Overly formal constructions
             (r'\bin\s+the\s+case\s+that\b', 'if'),
-            (r'\bin\s+the\s+situation\s+where\b', 'when'),
-            (r'\bin\s+the\s+circumstance\s+that\b', 'if'),
-            (r'\bin\s+the\s+condition\s+that\b', 'if'),
-            
-            # Time redundancy
             (r'\bnow\s+at\s+this\s+moment\b', 'now'),
-            (r'\bcurrently\s+at\s+this\s+time\b', 'now'),
-            (r'\bpresently\s+at\s+this\s+moment\b', 'now'),
-            (r'\btoday\s+in\s+this\s+day\b', 'today'),
         ]
     
-    # Apply translation fixes
+    # Apply translation fixes conservatively
     for pattern, replacement in translation_fixes:
-        fixed = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
+        # Test the replacement first for Polish text
+        if target_lang.lower() == "pl":
+            test_result = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
+            result_polish_chars = [char for char in test_result if char in polish_chars]
+            if len(result_polish_chars) >= len(original_polish_chars):
+                fixed = test_result
+        else:
+            fixed = re.sub(pattern, replacement, fixed, flags=re.IGNORECASE)
     
-    # Apply additional quality improvements
-    fixed = _improve_sentence_clarity(fixed, target_lang)
+    # Apply only essential clarity improvements
+    fixed = _improve_sentence_clarity_conservative(fixed, target_lang)
+    
+    # Final safety check for Polish characters
+    if target_lang.lower() == "pl":
+        final_polish_chars = [char for char in fixed if char in polish_chars]
+        if len(final_polish_chars) < len(original_polish_chars) * 0.8:  # Lost more than 20% of Polish chars
+            return text
     
     return fixed.strip()
 
-def _improve_sentence_clarity(text: str, target_lang: str) -> str:
+def _improve_sentence_clarity_conservative(text: str, target_lang: str) -> str:
     """
-    Improve sentence clarity and readability for subtitle context.
+    Conservative sentence clarity improvement to prevent over-correction.
     """
     if not text.strip():
         return text
     
     improved = text
     
-    # Universal clarity improvements
+    # Only essential clarity improvements
     clarity_fixes = [
-        # Remove excessive repetition
-        (r'\b(\w+)\s+\1\b', r'\1'),  # word word -> word
-        (r'\b(bardzo|very)\s+(bardzo|very)\b', r'\1'),  # very very -> very
-        (r'\b(really|naprawdę)\s+(really|naprawdę)\b', r'\1'),  # really really -> really
-        
-        # Fix common spacing issues
+        # Only the safest fixes
         (r'\s+([.!?])', r'\1'),  # space before punctuation
-        (r'([.!?])\s*([.!?])', r'\1'),  # duplicate punctuation
         (r'\s{2,}', ' '),  # multiple spaces
-        
-        # Improve sentence flow
-        (r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper()),
     ]
     
     for pattern, replacement in clarity_fixes:
-        if callable(replacement):
-            improved = re.sub(pattern, replacement, improved)
-        else:
-            improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
+        improved = re.sub(pattern, replacement, improved, flags=re.IGNORECASE)
     
     return improved.strip()
     
