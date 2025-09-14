@@ -91,6 +91,11 @@ class ProgressController:
             return
         logging.debug(f"[ProgressController] update_translation_progress: current={current}, total={total}")
         self.root.after(0, self._do_translation_update, current, total)
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     def _do_translation_update(self, current, total):
         import logging
@@ -105,6 +110,12 @@ class ProgressController:
         logging.debug(f"[ProgressController] _do_translation_update: current={current}, total={total}, delta={delta}")
         # advance overall by delta steps
         self._step_ui(delta)
+        
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     # ——— Post-processing updates (thread-safe) ———
     def update_post_progress(self, current, total):
@@ -113,6 +124,11 @@ class ProgressController:
             return
         logging.debug(f"[ProgressController] update_post_progress: current={current}, total={total}")
         self.root.after(0, self._do_post_update, current, total)
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     def _do_post_update(self, current, total):
         import logging
@@ -134,12 +150,21 @@ class ProgressController:
         # advance overall by delta steps
         self._step_ui(delta)
 
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
+
         # If post-processing is complete, set progress bar and labels to 100%
         if current >= total and total > 0:
             self.progress_var.set(100)
             self.status_label.config(text="100% | Time remaining: 00:00")
             self.post_label.config(text="Post-processing: complete")
-            self.root.update_idletasks()
+            try:
+                self.root.update_idletasks()
+            except Exception:
+                pass  # Ignore if window is destroyed
 
     def show_post_start(self):
         # Don't change done_steps or total_steps here - they're already correct
@@ -173,7 +198,11 @@ class ProgressController:
 
     def _update_ui(self, pct, status):
         self.status_label.config(text=status)
-        self.root.update_idletasks()
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     # optional compatibility aliases
     show_post_processing_start = show_post_start

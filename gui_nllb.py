@@ -407,6 +407,11 @@ def run_gui_nllb():
                 def heartbeat():
                     if not stop_flag["stop"]:
                         controller.update_post_progress(controller.p_current, total)
+                        # Force UI update even when window is not in focus
+                        try:
+                            root.update_idletasks()
+                        except Exception:
+                            pass  # Ignore if window is destroyed
                         root.after(500, heartbeat)
                 root.after(0, heartbeat)
 
