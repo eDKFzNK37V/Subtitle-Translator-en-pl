@@ -1,5 +1,5 @@
 # subtitle_workflow.py
-import os
+
 import re
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
@@ -256,6 +256,7 @@ def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossa
     return split_lines
 
 def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None, n_wordidx=0, use_contextaware_n=False):
+    import os
     r"""
     Load (texts, subs, idx_map), apply dialogue grouping, tag handling, and context-aware translation.
     Enhanced with context-aware \N reinsertion and improved processing pipeline.
@@ -327,8 +328,12 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
     save_subtitle_lines(final_lines, output_path, subs, idx_map)
 
-    # Write session log at the end of translation
-    from logs import write_session_log
+
+    # Write session log at the end of translation in the output directory
+    from logs import write_session_log, initialize_session_log
+    import os
+    output_dir = os.path.dirname(output_path)
+    initialize_session_log(output_dir)
     write_session_log()
 
     return output_path, texts, final_lines

@@ -1,3 +1,4 @@
+
 import os
 import re
 from datetime import datetime
@@ -67,15 +68,33 @@ _session_log_data = {
     'session_started': False,
     'log_file': None
 }
+# Utility to get next available correction log filename in a directory
+def get_next_correction_log_path(output_dir):
+    """
+    Returns the next available correction log file path in the output directory.
+    Pattern: correction_log.txt, correction_log(1).txt, correction_log(2).txt, ...
+    """
+    base_name = "correction_log.txt"
+    log_path = os.path.join(output_dir, base_name)
+    if not os.path.exists(log_path):
+        return log_path
+    n = 1
+    while True:
+        log_path = os.path.join(output_dir, f"correction_log({n}).txt")
+        if not os.path.exists(log_path):
+            return log_path
+        n += 1
 
-
-def initialize_session_log():
-    """Initialize a single log file for the entire translation session."""
+def initialize_session_log(output_dir=None):
+    """Initialize a single log file for the entire translation session in the output directory."""
     global _session_log_data
-    
     if not _session_log_data['session_started']:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        _session_log_data['log_file'] = f"correction_log_{timestamp}.txt"
+        if output_dir is not None:
+            from logs import get_next_correction_log_path
+            _session_log_data['log_file'] = get_next_correction_log_path(output_dir)
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            _session_log_data['log_file'] = f"correction_log_{timestamp}.txt"
         _session_log_data['session_started'] = True
         _session_log_data['detected_names'] = set()
         _session_log_data['unknown_words'] = set()

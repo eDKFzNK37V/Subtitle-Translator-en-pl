@@ -4,6 +4,7 @@ from functools import lru_cache
 import torch
 from config import DEVICE
 from models import PUNCT_MODELS, PUNCT_TOKENIZERS, GRAMMAR_MODEL, GRAMMAR_TOKENIZER
+from logs import accumulate_correction_data, log_names_and_unknown_words
 
 def correct_punctuation(text, model_choice="kredor"):
     model = PUNCT_MODELS[model_choice]
@@ -567,7 +568,6 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
 
 
 # Session logging has been moved to logs.py
-from logs import accumulate_correction_data, log_names_and_unknown_words
 
 def correct_grammar_batch(texts, confidence_threshold: float = 0.85, enable_logging: bool = True):
     """
