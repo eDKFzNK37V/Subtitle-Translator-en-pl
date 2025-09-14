@@ -51,10 +51,11 @@ def load_nllb_13b():
     return model, tok, device
 
 def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
-                         max_length=256, num_beams=8, no_repeat_ngram_size=3,
-                         length_penalty=0.8, repetition_penalty=1.1):
+                         max_length=256, num_beams=5, no_repeat_ngram_size=2,
+                         length_penalty=0.9, repetition_penalty=1.05):
     """
-    Enhanced NLLB translation with improved quality parameters.
+    Optimized NLLB translation with improved quality and performance balance.
+    Enhanced for subtitle translation with streamlined parameters.
     Assumes:
       - tok is the NLLB tokenizer
       - src_code/tgt_code are already in NLLB form (e.g. "eng_Latn", "pol_Latn")
@@ -63,45 +64,45 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     tok.src_lang = src_code
     tgt_id = tok.convert_tokens_to_ids(tgt_code)
 
+    # Optimized encoding with dynamic padding for better memory efficiency
     enc = tok(
         lines,
         return_tensors="pt",
         padding=True,
-        truncation=True
+        truncation=True,
+        max_length=max_length
     ).to(device)
 
     with torch.no_grad():
-        # Enhanced generation parameters for subtitle quality
+        # Optimized generation parameters balancing quality and speed
         gen = model.generate(
             **enc,
             forced_bos_token_id=tgt_id,
             max_length=max_length,
-            num_beams=num_beams,  # Increased for better quality
+            num_beams=num_beams,  # Reduced for better speed while maintaining quality
             early_stopping=True,
-            length_penalty=length_penalty,  # Slightly favor shorter, more natural text
-            no_repeat_ngram_size=no_repeat_ngram_size,  # Reduce repetition
-            do_sample=False,  # Use deterministic beam search for consistency
+            length_penalty=length_penalty,  # Optimized for natural subtitle length
+            no_repeat_ngram_size=no_repeat_ngram_size,  # Reduced for better performance
+            do_sample=False,  # Deterministic for consistency
             num_return_sequences=1,
-            bad_words_ids=None,
-            temperature=1.0,
-            top_k=50,
-            top_p=0.95,
-            repetition_penalty=repetition_penalty  # Slight penalty for repetition
+            repetition_penalty=repetition_penalty,  # Reduced penalty for better flow
+            # Removed unused parameters for performance optimization
         )
     
     decoded = tok.batch_decode(gen, skip_special_tokens=True)
     
     # Apply enhanced post-processing for each translated line  
     enhanced_results = []
+    target_lang = _get_target_lang_from_code(tgt_code)
     for idx, text in enumerate(decoded):
-        # Apply immediate quality improvements
-        enhanced_text = _enhance_translation_quality(text, _get_target_lang_from_code(tgt_code), lines[idx] if idx < len(lines) else "")
+        # Apply immediate quality improvements with optimized processing
+        enhanced_text = _enhance_translation_quality(text, target_lang, lines[idx] if idx < len(lines) else "")
         enhanced_results.append(enhanced_text)
     
     return enhanced_results
 
 def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
-                         batch_size=16, progress_callback=None):
+                         batch_size=12, progress_callback=None):
     # Always use the model and tokenizer passed as arguments (do not overwrite with globals)
     # Map GUI codes ("en","pl") → NLLB codes ("eng_Latn","pol_Latn")
     src_code = get_model_lang_code(src_lang, "nllb")
@@ -132,8 +133,8 @@ def translate_with_context_nllb(
     model,
     tokenizer,
     device,
-    beams=8,
-    batch_size=16,
+    beams=5,
+    batch_size=12,
     polish_only=False,
     glossary=None,
     translation_callback=None
@@ -244,7 +245,7 @@ def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossa
         grouped_clean,
         src_lang,
         tgt_lang,
-        batch_size=8,
+        batch_size=6,
         progress_callback=translation_callback
     )
 
@@ -299,7 +300,7 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
             grouped_clean,
             src_lang,
             tgt_lang,
-            batch_size=8,
+            batch_size=6,
             progress_callback=translation_callback
         )
 
@@ -414,76 +415,61 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
 def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "") -> str:
     """
     Apply immediate quality enhancements to translated text for subtitle context.
-    This runs right after translation to catch common issues early.
+    Optimized for performance while maintaining quality improvements.
     """
     if not translated_text.strip():
         return translated_text
     
     enhanced = translated_text
     
-    # Language-specific immediate improvements
+    # Language-specific immediate improvements (most critical patterns only)
     if target_lang.lower() == "pl":
-        # Polish subtitle optimizations
+        # Polish subtitle optimizations - prioritized for performance
         immediate_fixes = [
-            # Fix common awkward constructions
+            # Most common awkward constructions (high impact)
             (r'\bja jestem\b', 'jestem'),
-            (r'\bty jesteś\b', 'jesteś'),
             (r'\bto jest bardzo\b', 'to bardzo'),
             (r'\bmusisz wiedzieć, że\b', 'musisz wiedzieć:'),
-            (r'\bmogę ci powiedzieć, że\b', 'powiem ci:'),
             (r'\bchcę ci powiedzieć, że\b', 'słuchaj:'),
             
-            # Simplify formal patterns
+            # Critical formal patterns (high frequency)
             (r'\bpragnę\s+([a-ząćęłńóśźż]+)\b', r'chcę \1'),
-            (r'\bżyczę\s+sobie\b', 'chcę'),
             (r'\bmam\s+zamiar\b', 'zamierzam'),
             (r'\bw\s+przypadku\s+gdy\b', 'jeśli'),
-            (r'\bw\s+sytuacji\s+kiedy\b', 'gdy'),
             
-            # Natural speech patterns
+            # Essential speech patterns 
             (r'\btak,\s*tak\b', 'tak'),
             (r'\bnie,\s*nie\b', 'nie'),
             (r'\bobecnie\b', 'teraz'),
-            (r'\baktualnie\b', 'teraz'),
-            (r'\bpodczas\s+gdy\b', 'gdy'),
         ]
     else:
-        # English subtitle optimizations
+        # English subtitle optimizations - prioritized for performance
         immediate_fixes = [
-            # Natural contractions and flow
+            # Most common contractions (high impact)
             (r'\bI will\b', "I'll"),
             (r'\byou will\b', "you'll"),
             (r'\bwe will\b', "we'll"),
             (r'\bthey will\b', "they'll"),
-            (r'\bhe will\b', "he'll"),
-            (r'\bshe will\b', "she'll"),
-            (r'\bit will\b', "it'll"),
             
-            # Conversational patterns
+            # Critical conversational patterns
             (r'\bI have got\b', "I've got"),
-            (r'\byou have got\b', "you've got"),
             (r'\bI need to tell you that\b', "I need to tell you:"),
-            (r'\bI want to say that\b', "Let me say:"),
             (r'\bIt is necessary to\b', "You need to"),
             
-            # Remove redundancy
+            # Essential redundancy removal
             (r'\byes,\s*yes\b', 'yes'),
             (r'\bno,\s*no\b', 'no'),
-            (r'\bokay,\s*okay\b', 'okay'),
-            (r'\bright,\s*right\b', 'right'),
             
-            # Natural transitions
+            # Common formal transitions
             (r'\bIn addition to that\b', 'Also'),
             (r'\bFurthermore\b', 'Also'),
-            (r'\bMoreover\b', 'Plus'),
-            (r'\bNevertheless\b', 'Still'),
         ]
     
-    # Apply immediate fixes
+    # Apply immediate fixes efficiently
     for pattern, replacement in immediate_fixes:
         enhanced = re.sub(pattern, replacement, enhanced, flags=re.IGNORECASE)
     
-    # Universal subtitle optimizations
+    # Universal subtitle optimizations (streamlined)
     enhanced = _apply_universal_subtitle_fixes(enhanced)
     
     return enhanced.strip()
@@ -491,18 +477,15 @@ def _enhance_translation_quality(translated_text: str, target_lang: str, source_
 def _apply_universal_subtitle_fixes(text: str) -> str:
     """
     Apply universal fixes that improve subtitle readability across languages.
+    Optimized for performance with essential fixes only.
     """
-    # Fix spacing and punctuation issues
+    # Essential spacing and punctuation fixes
     text = re.sub(r'\s+', ' ', text)  # Multiple spaces to single
     text = re.sub(r'\s+([.!?,:;])', r'\1', text)  # Remove space before punctuation
     text = re.sub(r'([.!?])\s*([.!?])', r'\1', text)  # Remove duplicate punctuation
     
-    # Improve sentence flow
+    # Basic sentence flow (essential only)
     text = re.sub(r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), text)
-    
-    # Fix quotation marks
-    text = re.sub(r'"\s+([^"]*?)\s+"', r'"\1"', text)
-    text = re.sub(r"'\s+([^']*?)\s+'", r"'\1'", text)
     
     # Capitalize first letter if needed
     if text and text[0].islower():
