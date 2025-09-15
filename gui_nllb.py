@@ -55,8 +55,9 @@ def run_gui_nllb():
     polish_only_cb.grid(row=4, column=1, sticky="w")
 
     tk.Label(root, text="\\N tag word index:").grid(row=5, column=0, sticky="w")
+    tk.Label(root, text="I would advise you to use a rigid value", font=("bold")).grid(row=5, column=1, sticky="w")
     n_tag_wordidx_spin = tk.Spinbox(root, from_=0, to=50, textvariable=n_tag_wordidx, width=5)
-    n_tag_wordidx_spin.grid(row=5, column=1, sticky="w")
+    n_tag_wordidx_spin.grid(row=5, column=2, sticky="w")
 
     formatting_cb = tk.Checkbutton(
         root,
@@ -143,24 +144,30 @@ def run_gui_nllb():
         # After user approves, show flexion/grammar error preview
         def show_flexion_preview(lines):
             import language_tool_python
+            import threading
             tool = language_tool_python.LanguageTool('pl-PL')
             preview = tk.Toplevel(root)
             preview.title("Podgląd błędów fleksyjnych/gramatycznych (LanguageTool)")
             preview.geometry("900x600")
             text = tk.Text(preview, wrap="word", font=("Courier", 10))
             text.pack(fill=tk.BOTH, expand=True)
-            for idx, line in enumerate(lines):
-                matches = tool.check(line)
-                if matches:
-                    text.insert(tk.END, f"Linia {idx+1}: {line}\n", "err")
-                    for m in matches:
-                        text.insert(tk.END, f"  - {m.ruleId}: {m.message}\n", "msg")
-                else:
-                    text.insert(tk.END, f"Linia {idx+1}: {line}\n", "ok")
             text.tag_config("err", foreground="red")
             text.tag_config("msg", foreground="orange")
             text.tag_config("ok", foreground="black")
             tk.Button(preview, text="Zamknij", command=preview.destroy).pack(pady=10)
+
+            def check_lines():
+                for idx, line in enumerate(lines):
+                    matches = tool.check(line)
+                    def insert_result():
+                        if matches:
+                            text.insert(tk.END, f"Linia {idx+1}: {line}\n", "err")
+                            for m in matches:
+                                text.insert(tk.END, f"  - {m.ruleId}: {m.message}\n", "msg")
+                        else:
+                            text.insert(tk.END, f"Linia {idx+1}: {line}\n", "ok")
+                    text.after(0, insert_result)
+            threading.Thread(target=check_lines, daemon=True).start()
         fresh_orig, _, _ = load_subtitle_lines(file_path.get())
 
         review = tk.Toplevel(root)
@@ -214,30 +221,39 @@ def run_gui_nllb():
                 logging.exception("[review_txt] Save failed")
                 on_translation_error(e)
 
-        tk.Button(review, text="Approve and Save", command=approve_and_save).pack(pady=10)
+        btn_frame = tk.Frame(review)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="Approve and Save", command=approve_and_save).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Preview Flexion/Grammar Errors", command=lambda: show_flexion_preview([e.get() for e in entries])).pack(side="left", padx=5)
 
     def review_sub_translations(orig_nonempty, trans, out_path, log_path):
         # After user approves, show flexion/grammar error preview
         def show_flexion_preview(lines):
             import language_tool_python
+            import threading
             tool = language_tool_python.LanguageTool('pl-PL')
             preview = tk.Toplevel(root)
             preview.title("Podgląd błędów fleksyjnych/gramatycznych (LanguageTool)")
             preview.geometry("900x600")
             text = tk.Text(preview, wrap="word", font=("Courier", 10))
             text.pack(fill=tk.BOTH, expand=True)
-            for idx, line in enumerate(lines):
-                matches = tool.check(line)
-                if matches:
-                    text.insert(tk.END, f"Linia {idx+1}: {line}\n", "err")
-                    for m in matches:
-                        text.insert(tk.END, f"  - {m.ruleId}: {m.message}\n", "msg")
-                else:
-                    text.insert(tk.END, f"Linia {idx+1}: {line}\n", "ok")
             text.tag_config("err", foreground="red")
             text.tag_config("msg", foreground="orange")
             text.tag_config("ok", foreground="black")
             tk.Button(preview, text="Zamknij", command=preview.destroy).pack(pady=10)
+
+            def check_lines():
+                for idx, line in enumerate(lines):
+                    matches = tool.check(line)
+                    def insert_result():
+                        if matches:
+                            text.insert(tk.END, f"Linia {idx+1}: {line}\n", "err")
+                            for m in matches:
+                                text.insert(tk.END, f"  - {m.ruleId}: {m.message}\n", "msg")
+                        else:
+                            text.insert(tk.END, f"Linia {idx+1}: {line}\n", "ok")
+                    text.after(0, insert_result)
+            threading.Thread(target=check_lines, daemon=True).start()
         fresh_orig, _, _ = load_subtitle_lines(file_path.get())
 
         review = tk.Toplevel(root)
@@ -297,7 +313,10 @@ def run_gui_nllb():
                 logging.exception("[review_subs] Save failed")
                 on_translation_error(e)
 
-        tk.Button(review, text="Approve and Save", command=approve_and_save).pack(pady=10)
+        btn_frame = tk.Frame(review)
+        btn_frame.pack(pady=10)
+        tk.Button(btn_frame, text="Approve and Save", command=approve_and_save).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Preview Flexion/Grammar Errors", command=lambda: show_flexion_preview([e.get() for e in entries])).pack(side="left", padx=5)
 
     # ─── Main Translation Flow ──────────────────────────────────────────────────
     def start_translation():

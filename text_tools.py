@@ -348,6 +348,10 @@ def insert_newline_tags_at_wordidx(text: str, n_tags: int, word_idx: int) -> str
     Insert n_tags of \N at the specified word index (after the word at that index).
     If word_idx >= number of words, append at end.
     """
+    # If word_idx == 0, use the automated context-aware function
+    if word_idx == 0:
+        return insert_newline_tags_contextaware(text, n_tags, prefer_punctuation=True)
+
     words = re.findall(r'\S+|\s+', text)
     # Find word boundaries (skip whitespace tokens)
     word_positions = [i for i, w in enumerate(words) if not w.isspace()]
@@ -582,12 +586,10 @@ def correct_grammar_batch(texts, confidence_threshold: float = 0.85, enable_logg
         corrected = correct_grammar_with_fallback(text, confidence_threshold)
         results.append(corrected)
     
-    # Log names and problematic corrections if enabled (but be very conservative)
+    # Log names and problematic corrections if enabled (always create a log file)
     if enable_logging:
         try:
-            changed_pairs = [(orig, corr) for orig, corr in zip(texts, results) if orig != corr]
-            if changed_pairs:  # Only log if there were actual changes
-                log_names_and_unknown_words(texts, results)
+            log_names_and_unknown_words(texts, results)
         except Exception:
             pass  # Don't fail on logging errors
     

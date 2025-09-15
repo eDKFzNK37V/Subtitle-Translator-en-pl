@@ -62,10 +62,19 @@ def save_subtitle_lines(lines: List[str], file_path: str,
                 subs[ev_idx].text = lines[li].strip()
         subs.save(file_path, encoding="utf-8-sig", format=ext)
 
+
     elif ext == "txt" and idx_map is not None:
         # Load all lines so we can preserve blank lines
-        with open(file_path, "r", encoding=detect_encoding(file_path)) as f:
-            all_lines = [line.rstrip("\n") for line in f]
+        if not os.path.exists(file_path):
+            # If the output file does not exist, create it with the correct number of blank lines
+            num_lines = max(idx_map) + 1 if idx_map else len(lines)
+            all_lines = ["" for _ in range(num_lines)]
+        else:
+            with open(file_path, "r", encoding=detect_encoding(file_path)) as f:
+                all_lines = [line.rstrip("\n") for line in f]
+            # If the file is shorter than needed, pad with blank lines
+            if len(all_lines) < (max(idx_map) + 1):
+                all_lines += ["" for _ in range((max(idx_map) + 1) - len(all_lines))]
         for li, orig_idx in enumerate(idx_map):
             if li < len(lines):
                 all_lines[orig_idx] = lines[li].strip()
