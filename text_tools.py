@@ -1,6 +1,5 @@
 from typing import List, Tuple
 import re
-from functools import lru_cache
 import torch
 from config import DEVICE
 from models import PUNCT_MODELS, PUNCT_TOKENIZERS, GRAMMAR_MODEL, GRAMMAR_TOKENIZER
