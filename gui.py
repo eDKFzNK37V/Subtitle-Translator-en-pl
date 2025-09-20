@@ -2,13 +2,7 @@
 import sys
 import traceback
 import logging, config
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
-import threading
-import os
-from logs import SubtitleLogger
-from progress_controller import ProgressController
-from gui_nllb import run_gui_nllb
+from tkinter import messagebox
 logging.basicConfig(filename="error.log", level=logging.ERROR)
 
 

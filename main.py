@@ -1,6 +1,4 @@
 # main.py
-
-import sys
 import argparse
 from gui import run_gui
 from subtitle_workflow import translate_with_context_nllb, model_setup

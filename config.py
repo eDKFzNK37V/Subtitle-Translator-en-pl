@@ -1,18 +1,5 @@
-import os
-import re
 import torch
-import pysubs2
-import language_tool_python
-from functools import lru_cache
-import tkinter as tk
-from tkinter import filedialog, messagebox
-from tqdm import tqdm
-from transformers import (
-    AutoTokenizer,
-    AutoModelForSeq2SeqLM,
-    pipeline,
-    AutoModelForTokenClassification
-)
-
+import warnings
+warnings.filterwarnings("ignore", message="`resume_download` is deprecated and will be removed in version 1.0.0")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 selected_engine = "nllb"  # Default and only supported engine

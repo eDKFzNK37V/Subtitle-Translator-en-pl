@@ -1,7 +1,4 @@
-import sys
-import traceback
 import logging
-import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 import threading
 import os
@@ -55,10 +52,10 @@ def run_gui_nllb():
     polish_only_cb.grid(row=4, column=1, sticky="w")
 
     tk.Label(root, text="\\N tag word index:").grid(row=5, column=0, sticky="w")
-    tk.Label(root, text="I would advise you to use a rigid value", font=("bold")).grid(row=5, column=1, sticky="w")
     n_tag_wordidx_spin = tk.Spinbox(root, from_=0, to=50, textvariable=n_tag_wordidx, width=5)
     n_tag_wordidx_spin.grid(row=5, column=2, sticky="w")
-
+    rigid_label = tk.Label(root, text="I would advise you to use a rigid value", font=("Arial", 10, "bold"))
+    rigid_label.grid(row=5, column=1, sticky="w")
     formatting_cb = tk.Checkbutton(
         root,
         text="Preserve formatting for .txt",
@@ -76,9 +73,23 @@ def run_gui_nllb():
         if file_type.get() == "txt":
             formatting_cb.grid()
             preview_btn.grid()
+            n_tag_wordidx_spin.grid_remove()
+            rigid_label.grid_remove()
+        elif file_type.get() == "ass":
+            n_tag_wordidx_spin.grid()
+            rigid_label.grid()
+            formatting_cb.grid_remove()
+            preview_btn.grid_remove()
+        # elif file_type.get() == "srt":
+        #     formatting_cb.grid_remove()
+        #     preview_btn.grid_remove()
+        #     n_tag_wordidx_spin.grid_remove()
+        #     rigid_label.grid_remove()
         else:
             formatting_cb.grid_remove()
             preview_btn.grid_remove()
+            n_tag_wordidx_spin.grid_remove()
+            rigid_label.grid_remove()
 
     file_type.trace_add("write", update_formatting_widgets)
     update_formatting_widgets()

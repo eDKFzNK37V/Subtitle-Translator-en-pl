@@ -1,15 +1,12 @@
 # pipeline.py
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
 import language_tool_python
 from subtitle_workflow import translate_lines, model_setup
 from resources import tool_pl, tool_en, ENHANCED_GLOSSARY, apply_context_sensitive_glossary
 from text_tools import (
     correct_punctuation,
     correct_grammar_with_fallback,
-    correct_punctuation_batch,
-    correct_grammar_batch,
     clean_translation,
     extract_tags_with_placeholders,
     restore_tags_from_placeholders,
@@ -117,7 +114,7 @@ def correct_text_batch(lines, lang, progress_callback=None):
     Minimalistic correction pipeline to prevent over-correction and quality degradation.
     Only applies essential corrections with maximum safety.
     """
-    from text_tools import group_dialogue_lines, split_grouped_translations
+    from text_tools import group_dialogue_lines, split_grouped_translations, fix_common_translation_issues
     total = len(lines)
     lang_lower = lang.lower()
 
