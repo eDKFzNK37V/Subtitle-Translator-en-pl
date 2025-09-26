@@ -33,8 +33,12 @@ def run_gui_nllb():
     n_tag_wordidx = tk.IntVar(value=0)
     # ─── Layout ──────────────────────────────────────────────────────────────────
     tk.Label(root, text="Subtitle File:").grid(row=0, column=0, sticky="w")
-    tk.Entry(root, textvariable=file_path, width=40).grid(row=0, column=1, padx=5)
-    tk.Button(root, text="Browse", command=lambda: browse_file()).grid(row=0, column=2)
+    tk.Entry(root, textvariable=file_path, width=40)
+    browse_file_entry = tk.Entry(root, textvariable=file_path, width=40)
+    browse_file_entry.grid(row=0, column=1, padx=5)
+    tk.Button(root, text="Browse", command=lambda: browse_file())
+    browse_file_btn = tk.Button(root, text="Browse", command=lambda: browse_file())
+    browse_file_btn.grid(row=0, column=2)
 
     tk.Label(root, text="Source Language:").grid(row=1, column=0, sticky="w")
     src_lang_menu = tk.OptionMenu(root, src_lang, *LANG_OPTIONS)
@@ -51,7 +55,8 @@ def run_gui_nllb():
     polish_only_cb = tk.Checkbutton(root, text="Polish Only", variable=polish_only)
     polish_only_cb.grid(row=4, column=1, sticky="w")
 
-    tk.Label(root, text="\\N tag word index:").grid(row=5, column=0, sticky="w")
+    n_tag_wordidx_label = tk.Label(root, text="\\N tag word index:")
+    n_tag_wordidx_label.grid(row=5, column=0, sticky="w")
     n_tag_wordidx_spin = tk.Spinbox(root, from_=0, to=50, textvariable=n_tag_wordidx, width=5)
     n_tag_wordidx_spin.grid(row=5, column=2, sticky="w")
     rigid_label = tk.Label(root, text="I would advise you to use a rigid value", font=("Arial", 10, "bold"))
@@ -73,22 +78,26 @@ def run_gui_nllb():
         if file_type.get() == "txt":
             formatting_cb.grid()
             preview_btn.grid()
+            n_tag_wordidx_label.grid_remove()
             n_tag_wordidx_spin.grid_remove()
             rigid_label.grid_remove()
         elif file_type.get() == "ass":
             n_tag_wordidx_spin.grid()
             rigid_label.grid()
+            n_tag_wordidx_label.grid()
             formatting_cb.grid_remove()
             preview_btn.grid_remove()
-        # elif file_type.get() == "srt":
-        #     formatting_cb.grid_remove()
-        #     preview_btn.grid_remove()
-        #     n_tag_wordidx_spin.grid_remove()
-        #     rigid_label.grid_remove()
+        elif file_type.get() == "srt":
+            formatting_cb.grid_remove()
+            preview_btn.grid_remove()
+            n_tag_wordidx_spin.grid_remove()
+            n_tag_wordidx_label.grid_remove()
+            rigid_label.grid_remove()
         else:
             formatting_cb.grid_remove()
             preview_btn.grid_remove()
             n_tag_wordidx_spin.grid_remove()
+            n_tag_wordidx_label.grid_remove()
             rigid_label.grid_remove()
 
     file_type.trace_add("write", update_formatting_widgets)
@@ -545,17 +554,23 @@ def run_gui_nllb():
         if not (file_path.get() and src_lang.get() and tgt_lang.get()):
             messagebox.showerror("Error", "Please fill all fields.")
             return
+        browse_file_entry.config(state="disabled")
+        browse_file_btn.config(state="disabled")
         start_btn.config(state="disabled")
         # Disable options during translation
         src_lang_menu.config(state="disabled")
         tgt_lang_menu.config(state="disabled")
         file_type_menu.config(state="disabled")
         polish_only_cb.config(state="disabled")
+        
         n_tag_wordidx_spin.config(state="disabled")
         status_label.config(text="Starting translation…")
+        
         threading.Thread(target=run_and_reset, daemon=True).start()
 
     def on_translation_success(out_path: str, log_path: str | None = None):
+        browse_file_entry.config(state="normal")
+        browse_file_btn.config(state="normal")
         start_btn.config(state="normal")
         # Re-enable options after translation
         src_lang_menu.config(state="normal")
