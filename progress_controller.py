@@ -21,10 +21,10 @@ class ProgressController:
         self.post_start_time = 0.0
 
     def start(self, translation_lines):
-        # Use actual translation line count
+        # Use actual translation line count and estimate post-processing
         self.t_total = translation_lines
-        self.p_total = 0  # Will be set later
-        self.total_steps = self.t_total
+        self.p_total = translation_lines  # Estimate post-processing as equal to translation
+        self.total_steps = self.t_total + self.p_total  # Include both phases from start
         self.done_steps = 0
         self.t_current = 0
         self.p_current = 0
@@ -38,19 +38,31 @@ class ProgressController:
 
     def set_post_total(self, post_total):
         """
-        Set the number of post-processing steps and update total_steps accordingly.
+        Update the actual post-processing total, replacing the initial estimate.
         """
         post_total = max(0, int(post_total))
+        old_p_total = self.p_total
         self.p_total = post_total
         self.total_steps = self.t_total + self.p_total
-        # Clamp done_steps if we’ve overshot
+        
+        # If the post-processing total changed significantly from our estimate,
+        # adjust done_steps proportionally to maintain smooth progress
+        if old_p_total != self.p_total and old_p_total > 0:
+            old_total = self.t_total + old_p_total
+            if old_total > 0:
+                # Maintain the same proportion of work completed
+                progress_ratio = self.done_steps / old_total
+                self.done_steps = int(progress_ratio * self.total_steps)
+        
+        # Clamp done_steps if we've overshot
         if self.done_steps > self.total_steps:
             self.done_steps = self.total_steps
-        # Refresh the status line
+            
+        # Update UI to reflect current progress
         pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
+        self.progress_var.set(pct)
         self._update_ui(int(pct), f"{int(pct)}% | Time remaining: --:--")
         self.post_start_time = 0.0
-
 
     # In progress_controller.py
     def _step_ui(self, steps=1):
@@ -79,6 +91,11 @@ class ProgressController:
             return
         logging.debug(f"[ProgressController] update_translation_progress: current={current}, total={total}")
         self.root.after(0, self._do_translation_update, current, total)
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     def _do_translation_update(self, current, total):
         import logging
@@ -93,6 +110,12 @@ class ProgressController:
         logging.debug(f"[ProgressController] _do_translation_update: current={current}, total={total}, delta={delta}")
         # advance overall by delta steps
         self._step_ui(delta)
+        
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     # ——— Post-processing updates (thread-safe) ———
     def update_post_progress(self, current, total):
@@ -101,6 +124,11 @@ class ProgressController:
             return
         logging.debug(f"[ProgressController] update_post_progress: current={current}, total={total}")
         self.root.after(0, self._do_post_update, current, total)
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     def _do_post_update(self, current, total):
         import logging
@@ -122,17 +150,32 @@ class ProgressController:
         # advance overall by delta steps
         self._step_ui(delta)
 
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
+
+        # If post-processing is complete, set progress bar and labels to 100%
+        if current >= total and total > 0:
+            self.progress_var.set(100)
+            self.status_label.config(text="100% | Time remaining: 00:00")
+            self.post_label.config(text="Post-processing: complete")
+            try:
+                self.root.update_idletasks()
+            except Exception:
+                pass  # Ignore if window is destroyed
+
     def show_post_start(self):
-        # On entering post-processing, set done_steps to t_total (translation complete)
-        self.done_steps = self.t_total
-        self.total_steps = self.t_total + self.p_total
-        pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
-        self.progress_var.set(pct)
+        # Don't change done_steps or total_steps here - they're already correct
+        # Just update the UI to show post-processing has started
         self.post_start_time = 0.0
         # Clear or update translation label when post-processing starts
         self.translation_label.config(text="Translation: complete")
-        self.post_label.config(text="Post-processing: 0% | Time remaining: --:--")
-        self._update_ui(pct, f"Post-processing: 0% | Time remaining: --:--")
+        self.post_label.config(text="Post-processing: 0%")
+        # Keep current progress - don't recalculate
+        current_pct = self.progress_var.get()
+        self._update_ui(current_pct, f"{int(current_pct)}% | Post-processing starting...")
 
     def reset_ui(self):
         self.progress_var.set(0)
@@ -155,7 +198,11 @@ class ProgressController:
 
     def _update_ui(self, pct, status):
         self.status_label.config(text=status)
-        self.root.update_idletasks()
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     # optional compatibility aliases
     show_post_processing_start = show_post_start

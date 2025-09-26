@@ -1,78 +1,86 @@
-# Copilot Instructions for Subtitle-Translator-en-pl
+# Subtitle-Translator-en-pl: AI Agent Coding Guide
 
-## Project Overview
+## Project Purpose & Architecture
 
-- **Purpose:** Translate and correct subtitle files between English and Polish, supporting `.ass`, `.srt`, and `.txt` formats. Focus on robust tag handling, dialogue grouping, and user-driven translation workflows.
-- **Entry Points:**
-  - `main.py` (CLI), `main_gui.py` (GUI)
-  - GUI logic: `gui.py`, `gui_m2m100.py`, `gui_nllb.py`
-  - Core pipeline: `subtitle_workflow.py` (translation/correction logic, tag handling)
-  - Utilities: `text_tools.py` (tag utils, dialogue grouping), `grammar.py`, `logs.py`, `resources.py`, `config.py`
+- **Goal:** Translate and correct subtitles (English/Polish) in `.ass`, `.srt`, `.txt` formats, with robust tag handling, context-aware grouping, neural/rule-based correction, and user-driven workflows.
+- **Main entry points:**
+  - CLI: `main.py`
+  - GUI: `main_gui.py` (calls into `gui.py`, `gui_m2m100.py`, `gui_nllb.py`)
+- **Core pipeline:** `subtitle_workflow.py` (translation/correction, tag handling)
+- **Utilities:** `text_tools.py` (tag utils, dialogue grouping), `grammar.py`, `logs.py`, `resources.py`, `config.py`
+- **Batch/context-aware processing:** `pipeline.py` (always calls `subtitle_workflow.py`)
 
-## Architecture & Data Flow
+### Data Flow (Pipeline)
 
-- **Pipeline:**
-  1. Load subtitle file (`subtitle_workflow.py`)
-  2. Preprocess: extract all `\N` tags (see `text_tools.py: extract_newline_tags`), optionally grammar-check (`grammar.py`)
-  3. Translate using selected model (`subtitle_workflow.py`, `models.py`)
-  4. Post-process: restore tags, reinsert `\N` at user-specified word index (see `insert_newline_tags_at_wordidx`), save output
+1. **Load subtitle** (`subtitle_workflow.py`)
+2. **Preprocess:**
+   - Extract all `\N` tags (`text_tools.py: extract_newline_tags`)
+   - Extract tag placeholders with semantic positioning (`extract_tags_with_placeholders`)
+3. **Dialogue grouping:**
+   - Group consecutive lines using idiom/context detection (`group_dialogue_lines`)
+4. **Translate:**
+   - Use selected model with enhanced glossary (`models.py`, `resources.py`)
+5. **Post-process:**
+   - Restore tags with intelligent spacing/word boundary detection (`restore_tags_from_placeholders`)
+   - Neural grammar correction with confidence scoring/fallback (`correct_grammar_with_fallback`)
+   - LanguageTool correction with timeout (`grammar.py`)
+   - Style/tone adjustment for subtitles (`adjust_subtitle_style_tone`)
+   - Context-aware `\N` reinsertion (`insert_newline_tags_contextaware`)
+   - Save output
+
+## Key Patterns & Conventions
+
+- **Tag Handling:**
+  - Always remove `\N` before translation, reinsert contextually after
+  - Use placeholders for tags, restore with `restore_tags_from_placeholders`
 - **Dialogue Grouping:**
-  - Consecutive lines are grouped for translation if the next starts with a lowercase letter, then split back after translation. See `text_tools.py` for grouping/splitting logic. Integrated in both GUIs and CLI.
-- **GUI:**
-  - Built with `tkinter` (`gui.py`, `gui_m2m100.py`, `gui_nllb.py`)
-  - Model selection, progress, and user-configurable `\N` reinsertion index (Spinbox)
-- **Batch/Context-Aware Processing:**
-  - `pipeline.py` provides batch correction and context-aware translation, always calling into `subtitle_workflow.py`
+  - Use `group_dialogue_lines` (max 3 lines, idiom/context aware)
+  - Split back to original lines with `split_grouped_translations`
+- **Correction/Glossary:**
+  - Use `correct_grammar_with_fallback` (confidence threshold: 0.6, fallback to original)
+  - Apply glossary with `apply_glossary(text, use_context=True)`
+- **Style/Tone:**
+  - Use `adjust_subtitle_style_tone` for conversational, subtitle-optimized output
+- **Model Integration:**
+  - All models managed in `models.py`, language code mapping in `subtitle_workflow.py:get_model_lang_code`
+- **Logging:**
+  - Use `logs.py` for debug/progress tracking
+- **Config:**
+  - Centralized in `config.py`, thresholds in `pipeline.py`
 
 ## Developer Workflows
 
-- **Run GUI:**
-  - `python main_gui.py` or `run_main.bat` (Windows)
-- **Run CLI:**
-  - `python main.py <input_file>`
-- **Environment:**
-  - Use the `subtitle-env` virtual environment: `subtitle-env\Scripts\activate` (PowerShell)
-  - Dependencies: `requirements.txt`
-- **Testing:**
-  - No formal test suite; validate by running translation on sample files
-
-## Project-Specific Patterns
-
-- **Tag Handling:**
-  - All `\N` tags are removed before translation and reinserted at a user-specified (GUI) or fixed (CLI) word index after all post-processing. See `text_tools.py` for extraction/insertion utilities. This logic is enforced in both GUIs and CLI (`subtitle_workflow.py`).
-- **Dialogue Grouping:**
-  - Group lines for translation if the next starts with lowercase, then split after translation. Utilities in `text_tools.py`.
-- **Model Integration:**
-  - Model-specific GUIs: `gui_m2m100.py`, `gui_nllb.py`
-  - All models managed in `models.py`
-  - Language code mapping is model-specific: NLLB uses codes like `eng_Latn`, M2M100 uses `en`. See `get_model_lang_code` in `subtitle_workflow.py` for mapping logic
-  - When adding new models, update `models.py`, `subtitle_workflow.py` (language code mapping), and add a new `gui_<model>.py` if GUI support is needed
-- **Cross-Component Patterns:**
-  - Both GUI and CLI use the same translation pipeline in `subtitle_workflow.py`
-  - Logging is handled via `logs.py` (not shown to user by default)
-  - Circular import issues are avoided by importing GUI entry points only inside functions
-  - If you see KeyError for language codes, check the mapping for the selected model
-- **Configuration:**
-  - Centralized in `config.py`
-- **Resource Management:**
-  - Static resources and language files in `resources.py`
+- **Run GUI:** `python main_gui.py` or `run_main.bat`
+- **Run CLI:** `python main.py <input_file>`
+- **Activate env:** `subtitle-env\Scripts\activate` (PowerShell)
+- **Install deps:** `pip install -r requirements.txt`
+- **Test core:** `python test_core_functions.py`
+- **Integration demo:** `python demo_integration.py`
 
 ## External Dependencies
 
-- **HuggingFace Transformers** for translation models
-- **Tkinter** for GUI
-- **pysubs2** for subtitle parsing
-- **CUDA** support is optional (`CUDA-TEST.py`)
+- HuggingFace Transformers (translation/grammar)
+- Tkinter (GUI)
+- pysubs2 (subtitle parsing)
+- LanguageTool Python (grammar)
+- PyTorch (neural models)
+- CUDA (optional, see `CUDA-TEST.py`)
 
-## Conventions & Examples
+## Examples
 
-- **File Naming:** GUI files prefixed with `gui_`, model logic in `models.py`, pipeline in `pipeline.py`
-- **Error Handling:** Most errors are logged, not raised to the user
-- **To translate a subtitle:** `python main.py example.srt`
-- **To launch the GUI:** `python main_gui.py`
+- **Translate subtitle:** `python main.py example.srt`
+- **Launch GUI:** `python main_gui.py`
+- **Enhanced tag/\N:**
+  - Input: `Hello,\Nworld! {\pos(320,240)}`
+  - After extraction: `Hello, world!`
+  - After translation: `Cześć, świecie!`
+  - After reinsertion: `Cześć,\Nświecie! {\pos(320,240)}`
 
 ## Troubleshooting
 
-- For model/language code errors, see `subtitle_workflow.py` and ensure correct mapping for the selected model
-- For tag placement issues, check that all `\N` handling is done via `text_tools.py` utilities and is called after all post-processing
-- Refer to `README.md` and code comments for further usage and architecture details
+- Model/language code errors: check `subtitle_workflow.py` (model mapping)
+- Tag placement: use enhanced tag handling in `text_tools.py`
+- Dialogue grouping: see `group_dialogue_lines` in `text_tools.py`
+- Correction quality: check confidence/fallback logic in pipeline
+- Performance: adjust thresholds/timeouts in `pipeline.py`
+- See `README.md` and code comments for more

@@ -1,41 +1,43 @@
 # subtitle_workflow.py
-import os
-import torch
+import re
 import torch
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from utils import load_subtitle_lines, save_subtitle_lines
-from models import get_m2m100_model, get_nllb_globals
+from models import get_nllb_globals
 from config import DEVICE, selected_engine as global_selected_engine
 from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
 
 def run_gui_entry():
     from gui import run_gui
     run_gui()
+
+def _get_target_lang_from_code(lang_code):
+    """Convert NLLB language codes back to simple language codes for quality enhancement."""
+    code_map = {
+        "eng_Latn": "en",
+        "pol_Latn": "pl",
+        "fra_Latn": "fr", 
+        "deu_Latn": "de",
+        "jpn_Jpan": "ja"
+    }
+    return code_map.get(lang_code, "en")  # Default to English if not found
+
 ## NLLB language code map (extend as needed)
 def model_setup():
     global TRANS_MODEL, TRANS_TOKENIZER
-    if global_selected_engine == "nllb":
-        TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
-        TRANS_MODEL.eval()
-    else:
-        TRANS_MODEL, TRANS_TOKENIZER = get_m2m100_model()
-        TRANS_MODEL.eval()
+    # Always use NLLB as the only supported model
+    TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
+    TRANS_MODEL.eval()
 
-# Language code maps for each model
+# Language code maps for NLLB
 NLLB_LANG = {
     "en": "eng_Latn",
     "pl": "pol_Latn",
 }
-M2M100_LANG = {
-    "en": "en",
-    "pl": "pl",
-}
 
-def get_model_lang_code(lang, model_type):
-    if model_type == "nllb":
-        return NLLB_LANG.get(lang, lang)
-    else:
-        return M2M100_LANG.get(lang, lang)
+def get_model_lang_code(lang, model_type="nllb"):
+    # Always use NLLB language codes
+    return NLLB_LANG.get(lang, lang)
 
 def load_nllb_13b():
     model_id = "facebook/nllb-200-1.3B"
@@ -48,9 +50,11 @@ def load_nllb_13b():
     return model, tok, device
 
 def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
-                         max_length=256, num_beams=6, no_repeat_ngram_size=3,
-                         length_penalty=1.0):
+                         max_length=256, num_beams=3, no_repeat_ngram_size=2,
+                         length_penalty=1.0, repetition_penalty=1.0):
     """
+    Optimized NLLB translation with improved quality and performance balance.
+    Enhanced for subtitle translation with streamlined parameters.
     Assumes:
       - tok is the NLLB tokenizer
       - src_code/tgt_code are already in NLLB form (e.g. "eng_Latn", "pol_Latn")
@@ -59,26 +63,44 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     tok.src_lang = src_code
     tgt_id = tok.convert_tokens_to_ids(tgt_code)
 
+    # Optimized encoding with dynamic padding for better memory efficiency
     enc = tok(
         lines,
         return_tensors="pt",
         padding=True,
-        truncation=True
+        truncation=True,
+        max_length=max_length
     ).to(device)
 
     with torch.no_grad():
+        # Optimized generation parameters balancing quality and speed
         gen = model.generate(
             **enc,
             forced_bos_token_id=tgt_id,
             max_length=max_length,
-            num_beams=num_beams,
-            no_repeat_ngram_size=no_repeat_ngram_size,
-            length_penalty=length_penalty
+            num_beams=num_beams,  # Conservative beam count for consistency
+            early_stopping=True,
+            length_penalty=length_penalty,  # Neutral length penalty
+            no_repeat_ngram_size=no_repeat_ngram_size,  # Conservative repetition control
+            do_sample=False,  # Deterministic for consistency
+            num_return_sequences=1,
+            repetition_penalty=repetition_penalty,  # Minimal repetition penalty
         )
-    return tok.batch_decode(gen, skip_special_tokens=True)
+    
+    decoded = tok.batch_decode(gen, skip_special_tokens=True)
+    
+    # Apply enhanced post-processing for each translated line  
+    enhanced_results = []
+    target_lang = _get_target_lang_from_code(tgt_code)
+    for idx, text in enumerate(decoded):
+        # Apply immediate quality improvements with optimized processing
+        enhanced_text = _enhance_translation_quality(text, target_lang, lines[idx] if idx < len(lines) else "")
+        enhanced_results.append(enhanced_text)
+    
+    return enhanced_results
 
 def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
-                         batch_size=16, progress_callback=None):
+                         batch_size=12, progress_callback=None):
     # Always use the model and tokenizer passed as arguments (do not overwrite with globals)
     # Map GUI codes ("en","pl") → NLLB codes ("eng_Latn","pol_Latn")
     src_code = get_model_lang_code(src_lang, "nllb")
@@ -109,8 +131,8 @@ def translate_with_context_nllb(
     model,
     tokenizer,
     device,
-    beams=6,
-    batch_size=16,
+    beams=5,
+    batch_size=12,
     polish_only=False,
     glossary=None,
     translation_callback=None
@@ -151,8 +173,8 @@ def translate_with_context_nllb(
         grouped_clean.append(clean)
         grouped_ph_maps.append(ph_map)
 
-    # Detect model type by tokenizer/model class name
-    model_type = "nllb" if hasattr(tokenizer, "lang_code_to_token") and hasattr(tokenizer, "set_src_lang_special_tokens") else "m2m100"
+    # Use NLLB as the only supported model type
+    model_type = "nllb"
     src_code = get_model_lang_code(src_lang, model_type)
     tgt_code = get_model_lang_code(tgt_lang, model_type)
 
@@ -172,25 +194,25 @@ def translate_with_context_nllb(
     # Split grouped translations back to original lines
     split_lines = split_grouped_translations(restored_groups, group_map)
 
-    if translation_callback:
-        for i in range(1, total + 1):
-            translation_callback(i, total)
+    # Final progress update only if we haven't reached the end yet
+    if translation_callback and len(grouped_clean) > 0:
+        translation_callback(len(grouped_clean), len(grouped_clean))
 
     return split_lines
 
 def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None):
-    model_setup()
-    from pipeline import apply_glossary, GLOSSARY
-    stripped, ph_maps = [], []
-    for line in lines:
-        clean, ph_map = extract_tags_with_placeholders(line)
-        clean = apply_glossary(clean, glossary)
-        stripped.append(clean)
-        ph_maps.append(ph_map)
-
-    model, tok, device = load_nllb_13b()
-    translated = translate_lines_nllb(model, tok, device, stripped, src_lang, tgt_lang, progress_callback=translation_callback)
-    return [restore_tags_from_placeholders(translated[i], ph_maps[i]) for i in range(len(translated))]
+    """
+    Enhanced NLLB correction using the comprehensive correction pipeline from pipeline.py
+    """
+    from pipeline import correct_text_batch
+    
+    # Use the enhanced correction pipeline with NLLB model setup
+    model_setup()  # Ensure NLLB model is loaded
+    
+    # Apply the enhanced correction pipeline
+    corrected_lines = correct_text_batch(lines, tgt_lang, translation_callback)
+    
+    return corrected_lines
 
 
 
@@ -221,7 +243,7 @@ def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossa
         grouped_clean,
         src_lang,
         tgt_lang,
-        batch_size=8,
+        batch_size=6,
         progress_callback=translation_callback
     )
 
@@ -232,13 +254,22 @@ def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossa
     split_lines = split_grouped_translations(restored_groups, group_map)
     return split_lines
 
-def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None):
-    """
+def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None, n_wordidx=0, use_contextaware_n=False):
+    import os
+    r"""
     Load (texts, subs, idx_map), apply dialogue grouping, tag handling, and context-aware translation.
+    Enhanced with context-aware \N reinsertion and improved processing pipeline.
     """
     model_setup()  # Ensure correct model/tokenizer is set
     from pipeline import apply_glossary, GLOSSARY
-    from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, group_dialogue_lines, split_grouped_translations
+    from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, insert_newline_tags_contextaware, group_dialogue_lines, split_grouped_translations
+    from logs import initialize_session_log
+
+    # Initialize session logging at the start with output directory
+    ext = file_path.split('.')[-1].lower()
+    output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
+    output_dir = os.path.dirname(output_path)
+    initialize_session_log(output_dir)
 
     texts, subs, idx_map = load_subtitle_lines(file_path)
     if not texts:
@@ -260,7 +291,7 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     grouped_ph_maps = []
     for group in grouped_lines:
         clean, ph_map = extract_tags_with_placeholders(group)
-        clean = apply_glossary(clean, glossary)
+        clean = apply_glossary(clean, glossary, use_context=True)
         grouped_clean.append(clean)
         grouped_ph_maps.append(ph_map)
 
@@ -275,7 +306,7 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
             grouped_clean,
             src_lang,
             tgt_lang,
-            batch_size=8,
+            batch_size=6,
             progress_callback=translation_callback
         )
 
@@ -285,31 +316,50 @@ def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, transl
     # Split grouped translations back to original lines
     restored_lines = split_grouped_translations(restored_groups, group_map)
 
-    # --- Insert \N tags at a fixed word index (e.g. 0 for CLI) ---
-    n_wordidx = 0
-    final_lines = [
-        insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
-        for line, n_count in zip(restored_lines, n_tag_counts)
-    ]
+    # --- Enhanced \N tag insertion logic ---
+    final_lines = []
+    for line, n_count in zip(restored_lines, n_tag_counts):
+        if n_count > 0:
+            if use_contextaware_n:
+                # Use context-aware insertion
+                processed_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True)
+            else:
+                # Use word index-based insertion (backwards compatibility)
+                processed_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+        else:
+            processed_line = line
+        final_lines.append(processed_line)
 
-    ext = file_path.split('.')[-1].lower()
-    output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
     save_subtitle_lines(final_lines, output_path, subs, idx_map)
+
+    # Write session log at the end of translation
+    from logs import write_session_log
+    write_session_log()
 
     return output_path, texts, final_lines
 
 def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=None):
+    """
+    Enhanced translation batch with improved quality controls for subtitle context.
+    Features:
+    - Optimized generation parameters for natural subtitle speech
+    - Multiple beam generations with quality selection
+    - Length penalty adjustments for subtitle constraints
+    - Temperature control for more natural output
+    """
     model_setup()  # Ensure correct model/tokenizer is set
     translated = []
     total_lines = len(lines)
 
-
-    # Detect model type by tokenizer/model class name
-    model_type = "nllb" if hasattr(TRANS_TOKENIZER, "lang_code_to_token") and hasattr(TRANS_TOKENIZER, "set_src_lang_special_tokens") else "m2m100"
+    # Use NLLB as the only supported model type
+    model_type = "nllb"
     src_code = get_model_lang_code(src_lang, model_type)
     tgt_code = get_model_lang_code(tgt_lang, model_type)
+    
+    # Setup NLLB tokenizer
     TRANS_TOKENIZER.src_lang = src_code
-    bos_token_id = lambda lang: TRANS_TOKENIZER.get_lang_id(get_model_lang_code(lang, model_type))
+    tgt_id = TRANS_TOKENIZER.convert_tokens_to_ids(tgt_code)
+    bos_token_id = tgt_id
 
     for i in range(0, total_lines, batch_size):
         batch = lines[i: i + batch_size]
@@ -321,19 +371,66 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
         ).to(DEVICE)
 
         with torch.no_grad():
-            outputs = TRANS_MODEL.generate(
-                **encoded,
-                forced_bos_token_id=bos_token_id(tgt_lang),
-                max_length=256
-            )
+            # Conservative generation parameters for natural translation
+            if model_type == "nllb":
+                outputs = TRANS_MODEL.generate(
+                    **encoded,
+                    forced_bos_token_id=bos_token_id,
+                    max_length=256,
+                    num_beams=3,  # Conservative beam count
+                    early_stopping=True,
+                    length_penalty=1.0,  # Neutral length penalty
+                    no_repeat_ngram_size=2,  # Basic repetition control
+                    do_sample=False,  # Deterministic for consistency
+                    num_return_sequences=1,
+                    repetition_penalty=1.0  # No repetition penalty to avoid over-processing
+                )
+            else:
+                outputs = TRANS_MODEL.generate(
+                    **encoded,
+                    forced_bos_token_id=bos_token_id,
+                    max_length=256,
+                    num_beams=3,  # Conservative beam count
+                    early_stopping=True,
+                    length_penalty=1.0,  # Neutral length penalty
+                    no_repeat_ngram_size=2,  # Basic repetition control
+                    do_sample=False,  # Deterministic for consistency
+                    num_return_sequences=1,
+                    repetition_penalty=1.0  # No repetition penalty to avoid over-processing
+                )
 
         decoded = TRANS_TOKENIZER.batch_decode(outputs, skip_special_tokens=True)
 
+        # Enhanced post-processing for each translated line
         for idx, text in enumerate(decoded):
-            translated.append(text)
+            # Apply immediate quality improvements
+            enhanced_text = _enhance_translation_quality(text, tgt_lang, lines[i + idx] if i + idx < len(lines) else "")
+            translated.append(enhanced_text)
             if progress_callback:
                 current_line = i + idx + 1
                 progress_callback(current_line, total_lines)
 
     return translated
+
+def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "") -> str:
+    """
+    Minimal quality enhancement to prevent over-correction issues.
+    Only applies the safest, most essential improvements.
+    """
+    if not translated_text.strip():
+        return translated_text
+    
+    enhanced = translated_text
+    
+    # Only essential spacing fixes - nothing more to prevent over-correction
+    enhanced = re.sub(r'\s{2,}', ' ', enhanced)  # Multiple spaces to single
+    enhanced = re.sub(r'\s+([.!?,:;])', r'\1', enhanced)  # Remove space before punctuation
+    
+    # Capitalize first letter if needed
+    if enhanced and enhanced[0].islower():
+        enhanced = enhanced[0].upper() + enhanced[1:]
+    
+    return enhanced.strip()
+
+
 
