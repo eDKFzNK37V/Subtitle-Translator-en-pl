@@ -2,17 +2,17 @@
 import os
 import re
 from datetime import datetime
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, Union
 
 
 # CLI Callback Classes and Functions (moved from cli_callbacks.py)
 class CLIEventData:
     """Data structure for CLI events containing relevant information."""
     
-    def __init__(self, event_type: str, input_file: str = None, output_file: str = None, 
-                 src_lang: str = None, tgt_lang: str = None, status: str = None, 
-                 error_msg: str = None, progress: tuple = None, log_path: str = None, 
-                 timestamp: datetime = None):
+    def __init__(self, event_type: str, input_file: Optional[str] = None, output_file: Optional[str] = None, 
+                 src_lang: Optional[str] = None, tgt_lang: Optional[str] = None, status: Optional[str] = None, 
+                 error_msg: Optional[str] = None, progress: Optional[tuple] = None, log_path: Optional[str] = None, 
+                 timestamp: Optional[datetime] = None):
         self.event_type = event_type
         self.input_file = input_file
         self.output_file = output_file
@@ -98,7 +98,7 @@ class CLICallbackManager:
             except Exception as e:
                 print(f"Warning: Callback error for {event_data.event_type}: {e}")
     
-    def on_start(self, input_file: str, src_lang: str, tgt_lang: str, output_file: str = None):
+    def on_start(self, input_file: str, src_lang: str, tgt_lang: str, output_file: Optional[str] = None):
         """Called when CLI translation starts."""
         # Initialize session logging
         if output_file:
@@ -145,7 +145,7 @@ class CLICallbackManager:
         if current >= total:
             print()  # New line when complete
     
-    def on_finish(self, output_file: str, total_lines: int, duration: float = None):
+    def on_finish(self, output_file: str, total_lines: int, duration: Optional[float] = None):
         """Called when CLI translation finishes successfully."""
         # Write session logs
         write_session_log()
@@ -179,7 +179,7 @@ class CLICallbackManager:
         if log_path and os.path.exists(log_path):
             print(f"Log saved to: {log_path}")
     
-    def on_error(self, error_msg: str, input_file: str = None):
+    def on_error(self, error_msg: str, input_file: Optional[str] = None):
         """Called when CLI translation encounters an error."""
         event_data = CLIEventData(
             event_type='error',
@@ -576,7 +576,7 @@ cli_callbacks = CLICallbackManager()
 
 
 # Convenience functions for direct use
-def on_cli_start(input_file: str, src_lang: str, tgt_lang: str, output_file: str = None):
+def on_cli_start(input_file: str, src_lang: str, tgt_lang: str, output_file: Optional[str] = None):
     """Convenience function to trigger CLI start event."""
     cli_callbacks.on_start(input_file, src_lang, tgt_lang, output_file)
 
@@ -586,12 +586,12 @@ def on_cli_progress(current: int, total: int, stage: str = "processing"):
     cli_callbacks.on_progress(current, total, stage)
 
 
-def on_cli_finish(output_file: str, total_lines: int, duration: float = None):
+def on_cli_finish(output_file: str, total_lines: int, duration: Optional[float] = None):
     """Convenience function to trigger CLI finish event."""
     cli_callbacks.on_finish(output_file, total_lines, duration)
 
 
-def on_cli_error(error_msg: str, input_file: str = None):
+def on_cli_error(error_msg: str, input_file: Optional[str] = None):
     """Convenience function to trigger CLI error event."""
     cli_callbacks.on_error(error_msg, input_file)
 
