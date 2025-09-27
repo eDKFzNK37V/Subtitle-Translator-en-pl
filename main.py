@@ -25,12 +25,6 @@ If you are not sure, just run: python main.py
 
 print("Any informations about updating any package, can be ignored due to specifics of the app")
 
-def create_progress_callback(stage_name="translation"):
-    """Create a progress callback that reports to CLI callbacks."""
-    def progress_callback(current, total):
-        on_cli_progress(current, total, stage_name)
-    return progress_callback
-
 def main():
     parser = argparse.ArgumentParser(description="Subtitle Translator CLI", add_help=False)
 
@@ -86,7 +80,7 @@ def main():
             on_cli_error("No subtitle lines found in the input file", args.input_file_path)
             return
 
-        # Translate using NLLB with progress callback
+        # Translate using NLLB (using original simple call)
         on_cli_progress(3, 4, "translating")
         translated = translate_with_context_nllb(
             lines,
@@ -94,8 +88,7 @@ def main():
             args.tgt,
             model,
             tokenizer,
-            device,
-            translation_callback=create_progress_callback("translation")
+            device
         )
         
         # Save output
