@@ -2,7 +2,7 @@
 import argparse
 import os
 import time
-from logs import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error
+from logs import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error, SubtitleLogger
 
 
 def print_usage():
@@ -24,6 +24,24 @@ If you are not sure, just run: python main.py
 """)
 
 print("Any informations about updating any package, can be ignored due to specifics of the app")
+
+def create_translation_callback(stage_name="translation"):
+    """Create a translation progress callback."""
+    def callback(current, total):
+        percentage = (current / total) * 100 if total > 0 else 0
+        print(f"\r{stage_name.capitalize()}: {current}/{total} ({percentage:.0f}%)", end='', flush=True)
+        if current >= total:
+            print()  # New line when complete
+    return callback
+
+def create_post_processing_callback():
+    """Create a post-processing progress callback."""
+    def callback(current, total):
+        percentage = (current / total) * 100 if total > 0 else 0
+        print(f"\rPost-processing: {current}/{total} ({percentage:.0f}%)", end='', flush=True)
+        if current >= total:
+            print()  # New line when complete
+    return callback
 
 def main():
     parser = argparse.ArgumentParser(description="Subtitle Translator CLI", add_help=False)
@@ -62,42 +80,103 @@ def main():
     
     try:
         # Import translation modules only when needed
-        from subtitle_workflow import translate_with_context_nllb, model_setup
+        from subtitle_workflow import translate_with_context_nllb, correct_text_batch_nllb
         from models import get_nllb_globals
         from utils import load_subtitle_lines, save_subtitle_lines
+        from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, group_dialogue_lines, split_grouped_translations
         
         # CLI Start event
         on_cli_start(args.input_file_path, args.src, args.tgt, output_path)
         
         # Load NLLB model
-        on_cli_progress(1, 4, "initialization")
+        print("Initialization: Loading NLLB model...")
         model, tokenizer, device = get_nllb_globals()
         
-        # Load lines
-        on_cli_progress(2, 4, "loading")
-        lines, subs, idx_map = load_subtitle_lines(args.input_file_path)
-        if not lines:
+        # Load subtitle lines
+        print("Loading subtitle file...")
+        texts, subs, idx_map = load_subtitle_lines(args.input_file_path)
+        if not texts:
             on_cli_error("No subtitle lines found in the input file", args.input_file_path)
             return
 
-        # Translate using NLLB (using original simple call)
-        on_cli_progress(3, 4, "translating")
-        translated = translate_with_context_nllb(
-            lines,
+        # Extract \N tags before translation (same as GUI)
+        cleaned_lines = []
+        n_tag_counts = []
+        for line in texts:
+            cleaned, n_count = extract_newline_tags(line)
+            cleaned_lines.append(cleaned)
+            n_tag_counts.append(n_count)
+        
+        # Group dialogue lines for translation (same as GUI)
+        grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
+        
+        # Store originals for logging
+        originals = cleaned_lines[:]
+        
+        # Translation phase
+        print(f"Translating {len(grouped_lines)} grouped lines...")
+        translated_groups = translate_with_context_nllb(
+            grouped_lines,
             args.src,
             args.tgt,
             model,
             tokenizer,
-            device
+            device,
+            translation_callback=create_translation_callback("translation")
         )
         
-        # Save output
-        on_cli_progress(4, 4, "saving")
+        # Split translations back to original lines (same as GUI)
+        translated = split_grouped_translations(translated_groups, group_map)
+        
+        # Save intermediate translation (same as GUI)
         save_subtitle_lines(translated, output_path, subs, idx_map)
+        
+        # Post-processing phase (missing from original CLI!)
+        print(f"Post-processing {len(translated)} lines...")
+        
+        # Create logger (same as GUI)
+        logger = SubtitleLogger(args.input_file_path, args.tgt, idx_map=idx_map)
+        
+        # Correct text using NLLB correction (same as GUI)
+        corrected_all = correct_text_batch_nllb(
+            translated,
+            args.src,
+            args.tgt,
+            translation_callback=create_post_processing_callback()
+        )
+        
+        # Re-insert \N tags at word index 0 (same as GUI default)
+        n_wordidx = 0
+        final_lines = [
+            insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+            for line, n_count in zip(corrected_all, n_tag_counts)
+        ]
+        
+        # Log all entries (same as GUI)
+        for idx, (orig, trans, final) in enumerate(zip(originals, translated, final_lines)):
+            try:
+                logger.log_entry(idx, orig, trans, final, tags_before=[], tags_after=[])
+            except Exception as e:
+                print(f"Warning: Logging failed on line {idx+1}: {e}")
+        
+        # Write log summary
+        try:
+            logger.write_summary()
+            log_path = logger.get_log_path() if hasattr(logger, "get_log_path") else logger.log_txt
+        except Exception as e:
+            print(f"Warning: Failed writing log summary: {e}")
+            log_path = None
+        
+        # Save final output with post-processing and \N tags
+        save_subtitle_lines(final_lines, output_path, subs, idx_map)
         
         # Calculate duration and finish
         duration = time.time() - start_time
-        on_cli_finish(output_path, len(lines), duration)
+        on_cli_finish(output_path, len(texts), duration)
+        
+        # Show log path like GUI does
+        if log_path and os.path.exists(log_path):
+            print(f"Log saved to: {log_path}")
         
     except ImportError as e:
         on_cli_error(f"Missing dependencies: {str(e)}", args.input_file_path)
