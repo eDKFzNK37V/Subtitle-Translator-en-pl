@@ -13,7 +13,7 @@ from datetime import datetime
 # Add the current directory to Python path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from cli_callbacks import (
+from logs import (
     CLIEventData, CLICallbackManager, 
     on_cli_start, on_cli_progress, on_cli_finish, on_cli_error,
     register_cli_callback

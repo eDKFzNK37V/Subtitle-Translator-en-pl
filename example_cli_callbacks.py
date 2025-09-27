@@ -6,7 +6,7 @@ Shows how to register custom callbacks to monitor translation events.
 
 import os
 import sys
-from cli_callbacks import register_cli_callback, CLIEventData
+from logs import register_cli_callback, CLIEventData
 
 
 def detailed_event_logger(event_data: CLIEventData):
@@ -68,7 +68,7 @@ def setup_custom_callbacks():
 
 def demonstrate_callbacks():
     """Demonstrate callback functionality with simulated events."""
-    from cli_callbacks import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error
+    from logs import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error
     
     print("\n" + "="*60)
     print("Demonstrating CLI Callbacks")

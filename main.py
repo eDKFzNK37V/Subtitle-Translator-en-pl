@@ -2,7 +2,7 @@
 import argparse
 import os
 import time
-from cli_callbacks import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error
+from logs import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error
 
 
 def print_usage():
