@@ -45,9 +45,9 @@ python main.py <input_file> [--src en|pl] [--tgt en|pl]
 Examples:
 
 ```bash
-python main.py example.srt
-python main.py example.srt --src en --tgt pl
-python main.py example.srt --src pl --tgt en
+python main.py example.ass
+python main.py example.ass --src en --tgt pl
+python main.py example.ass --src pl --tgt en
 ```
 
 If you are not sure, just run:
@@ -68,7 +68,7 @@ python main_gui.py
 
 ### Input
 
-**File**: `example.srt`
+**File**: `example.ass`
 
 ```
 1
@@ -78,7 +78,7 @@ Hello, world!
 
 ### Output
 
-**Translated File**: `example_translated.srt`
+**Translated File**: `example_translated.ass`
 
 ```
 1
