@@ -17,3 +17,4 @@ gui_nllb.txt
 gui_m2m100.txt
 grammar.txt
 system-prompt-llm.md
+error.log
