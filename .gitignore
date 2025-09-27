@@ -19,3 +19,9 @@ gui_m2m100.txt
 grammar.txt
 system-prompt-llm.md
 error.log
+
+# CLI callback test files and logs
+*_log_*.txt
+correction_log*.txt
+test_*.srt
+test_*.ass

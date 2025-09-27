@@ -2,10 +2,6 @@
 import argparse
 import os
 import time
-from gui import run_gui
-from subtitle_workflow import translate_with_context_nllb, model_setup
-from models import get_nllb_globals
-from utils import load_subtitle_lines, save_subtitle_lines
 from cli_callbacks import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error
 
 
@@ -50,7 +46,13 @@ def main():
 
     if not args.input_file_path:
         print_usage()
-        run_gui()
+        # Import GUI only when needed
+        try:
+            from gui import run_gui
+            run_gui()
+        except ImportError as e:
+            print(f"GUI not available: {e}")
+            print("Please install required dependencies or use CLI mode with a file argument.")
         return
 
     # Validate input file exists
@@ -65,6 +67,11 @@ def main():
     output_path = f"{base}_{args.tgt}.{ext}"
     
     try:
+        # Import translation modules only when needed
+        from subtitle_workflow import translate_with_context_nllb, model_setup
+        from models import get_nllb_globals
+        from utils import load_subtitle_lines, save_subtitle_lines
+        
         # CLI Start event
         on_cli_start(args.input_file_path, args.src, args.tgt, output_path)
         
@@ -99,6 +106,9 @@ def main():
         duration = time.time() - start_time
         on_cli_finish(output_path, len(lines), duration)
         
+    except ImportError as e:
+        on_cli_error(f"Missing dependencies: {str(e)}", args.input_file_path)
+        print("Please install required dependencies from requirements.txt")
     except FileNotFoundError as e:
         on_cli_error(f"File not found: {str(e)}", args.input_file_path)
     except PermissionError as e:
