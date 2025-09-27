@@ -14,7 +14,7 @@ To use the GUI (recommended for most users):
     python main.py
 
 To translate a subtitle file from the command line:
-    python main.py <input_file> [--src en|pl] [--tgt en|pl]
+    python main.py <input_file_path> [--src en|pl] [--tgt en|pl]
 
 Examples:
     python main.py example.srt
@@ -29,7 +29,7 @@ print("Any informations about updating any package, can be ignored due to specif
 def main():
     parser = argparse.ArgumentParser(description="Subtitle Translator CLI", add_help=False)
 
-    parser.add_argument("input_file", nargs="?", help="Subtitle file to translate")
+    parser.add_argument("input_file_path", nargs="?", help="Path to the subtitle file to translate")
     parser.add_argument("--src", default="en", help="Source language code (default: en)")
     parser.add_argument("--tgt", default="pl", help="Target language code (default: pl)")
     parser.add_argument("-h", "--help", action="store_true", help="Show this help message and exit")
@@ -39,7 +39,7 @@ def main():
         print_usage()
         return
 
-    if not args.input_file:
+    if not args.input_file_path:
         print_usage()
         run_gui()
         return
@@ -48,7 +48,7 @@ def main():
     model, tokenizer, device = get_nllb_globals()
 
     # Load lines
-    lines, subs, idx_map = load_subtitle_lines(args.input_file)
+    lines, subs, idx_map = load_subtitle_lines(args.input_file_path)
     if not lines:
         print("No subtitle lines found.")
         return
@@ -63,7 +63,7 @@ def main():
         device
     )
     
-    base, ext = args.input_file.rsplit('.', 1)
+    base, ext = args.input_file_path.rsplit('.', 1)
     output_path = f"{base}_{args.tgt}.{ext}"
     save_subtitle_lines(translated, output_path, subs, idx_map)
     print(f"Translated file saved to: {output_path}")
