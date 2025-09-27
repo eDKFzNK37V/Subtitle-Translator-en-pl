@@ -1,4 +1,5 @@
 __pycache__/
+.gitignore
 subtitle-env/
 config.txt
 CUDA-TEST.txt
