@@ -9,12 +9,22 @@ class SubtitleLogger:
         self.target_lang = target_lang
         self.idx_map = idx_map or []
         self.entries = []
+        self.cli_events = []  # Store CLI events
         self.log_txt = self._make_log_path(file_path)
 
     def _make_log_path(self, file_path):
         base, _ = os.path.splitext(file_path)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"{base}_log_{timestamp}.txt"
+
+    def log_cli_event(self, event_type, details=None):
+        """Log CLI events (start, progress, finish, error) for comprehensive tracking."""
+        cli_event = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": event_type,
+            "details": details or {}
+        }
+        self.cli_events.append(cli_event)
 
     def log_entry(self, idx, original, translated, corrected, tags_before=None, tags_after=None):
         """
@@ -34,6 +44,7 @@ class SubtitleLogger:
     def write_summary(self):
         """
         Write all logged entries to the log file in a human-readable format.
+        Includes CLI events if available.
         """
         with open(self.log_txt, "w", encoding="utf-8-sig") as f:
             f.write(f"Log for: {self.file_path}\n")
@@ -41,20 +52,36 @@ class SubtitleLogger:
             f.write(f"Generated: {datetime.now().isoformat()}\n")
             f.write("=" * 60 + "\n\n")
 
-            for entry in self.entries:
-                idx_str = (
-                    f"[Source index: {entry['source_index']}]"
-                    if entry["source_index"] is not None
-                    else "[Source index: ?]"
-                )
-                f.write(f"{idx_str}\n")
-                f.write(f"Original: {entry['original']}\n")
-                f.write(f"Translated: {entry['translated']}\n")
-                f.write(f"Corrected: {entry['corrected']}\n")
-                if entry["tags_before"] or entry["tags_after"]:
-                    f.write(f"Tags before: {entry['tags_before']}\n")
-                    f.write(f"Tags after: {entry['tags_after']}\n")
+            # Write CLI events if any
+            if self.cli_events:
+                f.write("CLI EVENTS:\n")
+                f.write("-" * 30 + "\n")
+                for event in self.cli_events:
+                    f.write(f"[{event['timestamp']}] {event['event_type'].upper()}\n")
+                    if event['details']:
+                        for key, value in event['details'].items():
+                            f.write(f"  {key}: {value}\n")
+                    f.write("\n")
                 f.write("\n")
+
+            # Write translation entries
+            if self.entries:
+                f.write("TRANSLATION ENTRIES:\n")
+                f.write("-" * 30 + "\n")
+                for entry in self.entries:
+                    idx_str = (
+                        f"[Source index: {entry['source_index']}]"
+                        if entry["source_index"] is not None
+                        else "[Source index: ?]"
+                    )
+                    f.write(f"{idx_str}\n")
+                    f.write(f"Original: {entry['original']}\n")
+                    f.write(f"Translated: {entry['translated']}\n")
+                    f.write(f"Corrected: {entry['corrected']}\n")
+                    if entry["tags_before"] or entry["tags_after"]:
+                        f.write(f"Tags before: {entry['tags_before']}\n")
+                        f.write(f"Tags after: {entry['tags_after']}\n")
+                    f.write("\n")
 
     def get_log_path(self):
         return self.log_txt
