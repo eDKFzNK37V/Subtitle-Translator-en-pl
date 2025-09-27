@@ -1,33 +1,29 @@
 # pipeline.py
 import re
 import threading
-from concurrent.futures import ThreadPoolExecutor
 import language_tool_python
-from resources import tool_pl, tool_en
+from subtitle_workflow import translate_lines, model_setup
+from resources import tool_pl, tool_en, ENHANCED_GLOSSARY, apply_context_sensitive_glossary
 from text_tools import (
     correct_punctuation,
-    correct_grammar,
-    correct_punctuation_batch,
-    correct_grammar_batch,
+    correct_grammar_with_fallback,
     clean_translation,
     extract_tags_with_placeholders,
     restore_tags_from_placeholders,
+    detect_and_improve_formality,
 )
 
-GLOSSARY = {
-    "White Hearts": "Białe Serca",
-    "savior": "zbawiciel",
-    "Hero": "Bohater",
-}
+GLOSSARY = ENHANCED_GLOSSARY
 
 # -----------------------------
 # Safety helpers to prevent hangs
 # -----------------------------
 
 MAX_CHARS_FOR_MODELS = 800
-LT_TIMEOUT = 1.5          # seconds per line
-MAX_WORKERS_LT = 4        # LT parallelism
-CORR_BATCH_SIZE = 32      # correction batch size
+LT_TIMEOUT = 1.2          # Reduced timeout for faster processing
+MAX_WORKERS_LT = 6        # Optimized LT parallelism
+CORR_BATCH_SIZE = 24      # Optimized correction batch size
+CONFIDENCE_THRESHOLD = 0.90  # Very high confidence threshold to prevent over-correction
 
 def _clamp(text: str, max_chars: int = MAX_CHARS_FOR_MODELS) -> str:
     return text if len(text) <= max_chars else text[:max_chars]
@@ -48,39 +44,61 @@ def _lt_check_with_timeout(tool, text: str, timeout_sec: float):
 
 
 # -----------------------------
-# Glossary
+# Enhanced Glossary with context awareness
 # -----------------------------
 
-def apply_glossary(text: str) -> str:
-    for src, tgt in GLOSSARY.items():
-        text = re.sub(rf"\b{re.escape(src)}\b", tgt, text, flags=re.IGNORECASE)
-    return text
+def apply_glossary(text: str, glossary=None, use_context=True) -> str:
+    """
+    Apply glossary with enhanced context awareness and better term matching.
+    """
+    glossary = glossary or GLOSSARY
+    result = text
+    
+    # Apply standard glossary
+    for src, tgt in glossary.items():
+        result = re.sub(rf"\b{re.escape(src)}\b", tgt, result, flags=re.IGNORECASE)
+    
+    # Apply context-sensitive glossary if enabled
+    if use_context:
+        result = apply_context_sensitive_glossary(result)
+    
+    return result
 
 # -----------------------------
 # Single-line correction
 # -----------------------------
 
 def correct_text(text, lang):
+    """
+    Enhanced single-line correction with confidence-based fallback.
+    """
     try:
         if lang.lower() == "pl":
             matches = _lt_check_with_timeout(tool_pl, _clamp(text), LT_TIMEOUT)
             if matches:
                 text = language_tool_python.utils.correct(text, matches)
         elif lang.lower() == "en":
-            # Grammar first (guarded)
+            # Grammar first with confidence fallback
             try:
-                text = correct_grammar(_clamp(text))
+                text = correct_grammar_with_fallback(_clamp(text), CONFIDENCE_THRESHOLD)
             except Exception:
                 pass
             # Then LanguageTool (guarded)
             matches = _lt_check_with_timeout(tool_en, _clamp(text), LT_TIMEOUT)
             if matches:
                 text = language_tool_python.utils.correct(text, matches)
+        
         # Punctuation (guarded)
         try:
             text = correct_punctuation(_clamp(text), "kredor")
         except Exception:
             pass
+            
+        # Style/tone adjustment for subtitles with enhanced formality detection and quality fixes
+        from text_tools import fix_common_translation_issues
+        text = fix_common_translation_issues(text, lang)
+        text = detect_and_improve_formality(text, lang)
+        
         return clean_translation(text)
     except Exception:
         # Absolute fallback: do minimal cleanup and return
@@ -90,78 +108,68 @@ def correct_text(text, lang):
 # Batch correction (per-line guarded)
 # -----------------------------
 
+
 def correct_text_batch(lines, lang, progress_callback=None):
+    """
+    Minimalistic correction pipeline to prevent over-correction and quality degradation.
+    Only applies essential corrections with maximum safety.
+    """
+    from text_tools import group_dialogue_lines, split_grouped_translations, fix_common_translation_issues
     total = len(lines)
-    out = ["" for _ in range(total)]
     lang_lower = lang.lower()
-    use_lt = lang_lower in ("pl", "en")
-    lt_tool = tool_pl if lang_lower == "pl" else (tool_en if lang_lower == "en" else None)
 
-    for start in range(0, total, CORR_BATCH_SIZE):
-        end = min(start + CORR_BATCH_SIZE, total)
-        batch = lines[start:end]
+    # Group dialogue lines for context preservation
+    grouped_lines, group_map = group_dialogue_lines(lines)
 
-        # 1) Placeholders + glossary
-        ph_maps = []
+    # Ultra-conservative correction approach
+    grouped_corrected = []
+    for group in grouped_lines:
+        # 1) Extract placeholders but skip heavy processing
+        ph_map = []
         cleans = []
-        for line in batch:
-            clean, ph_map = extract_tags_with_placeholders(line)
-            ph_maps.append(ph_map)
-            # optional glossary
-            for src, tgt in GLOSSARY.items():
-                clean = re.sub(rf"\b{re.escape(src)}\b", tgt, clean, flags=re.IGNORECASE)
+        for line in [group]:
+            clean, ph = extract_tags_with_placeholders(line)
+            ph_map.append(ph)
             cleans.append(clean)
 
-        # 2) Grammar (batched where beneficial)
-        if lang_lower == "en":
-            try:
-                cleans = correct_grammar_batch([_clamp(t) for t in cleans])
-            except Exception:
-                # fallback: per-line guarded
-                tmp = []
-                for t in cleans:
-                    try:
-                        tmp.append(correct_grammar(_clamp(t)))
-                    except Exception:
-                        tmp.append(t)
-                cleans = tmp
-
-        # 3) LanguageTool (parallel per line, short timeout, skip long lines)
-        if use_lt and lt_tool is not None:
-            def lt_fix(t):
-                t_short = _clamp(t)
-                matches = _lt_check_with_timeout(lt_tool, t_short, LT_TIMEOUT)
-                if matches:
-                    try:
-                        return language_tool_python.utils.correct(t, matches)
-                    except Exception:
-                        return t
-                return t
-            with ThreadPoolExecutor(max_workers=MAX_WORKERS_LT) as ex:
-                cleans = list(ex.map(lt_fix, cleans))
-
-        # 4) Punctuation (batched)
+        # 2) Skip grammar correction for now to prevent over-correction
+        # This is the main source of Polish character loss and over-correction
+        
+        # 3) Skip punctuation restoration to avoid issues
+        
+        # 4) Skip LanguageTool to avoid over-correction
+        
+        # 5) Only apply minimal style fixes - the safest possible
         try:
-            cleans = correct_punctuation_batch([_clamp(t) for t in cleans], "kredor")
+            # Only apply absolutely essential fixes
+            cleans = [fix_common_translation_issues(text, lang_lower) for text in cleans]
         except Exception:
-            # fallback single-line punctuation if needed
-            tmp = []
-            for t in cleans:
-                try:
-                    tmp.append(correct_punctuation(_clamp(t), "kredor"))
-                except Exception:
-                    tmp.append(t)
-            cleans = tmp
+            pass  # If anything fails, keep original
 
-        # 5) Final clean + restore placeholders
+        # 6) Just clean and restore placeholders
         for i, t in enumerate(cleans):
             corrected = clean_translation(t)
-            corrected = restore_tags_from_placeholders(corrected, ph_maps[i])
-            out[start + i] = corrected
-            if progress_callback:
-                progress_callback(start + i + 1, total)
+            corrected = restore_tags_from_placeholders(corrected, ph_map[i])
+            grouped_corrected.append(corrected)
 
-    return out
+    # Split grouped corrections back to original lines
+    split_lines = split_grouped_translations(grouped_corrected, group_map)
+
+    # Log corrections for analysis if any changes were made
+    try:
+        from logs import accumulate_correction_data
+        changed_pairs = [(orig, corr) for orig, corr in zip(lines, split_lines) if orig != corr]
+        if changed_pairs:  # Only log if there were actual changes
+            accumulate_correction_data(lines, split_lines)
+    except Exception:
+        pass  # Don't fail on logging errors
+
+    # Progress callback for each line
+    if progress_callback:
+        for idx in range(1, total + 1):
+            progress_callback(idx, total)
+
+    return split_lines
 
 
 # -----------------------------
@@ -175,7 +183,7 @@ def translate_with_context(lines, src_lang, tgt_lang, polish_only=False, transla
     - Applies glossary pre-translation.
     - Respects polish_only flag.
     """
-    from subtitle_workflow import translate_lines
+    model_setup()
 
     total = len(lines)
     result = []
@@ -226,3 +234,6 @@ def translate_with_context(lines, src_lang, tgt_lang, polish_only=False, transla
                 translation_callback(i, total)
 
     return result
+
+
+

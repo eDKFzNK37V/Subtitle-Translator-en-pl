@@ -1,4 +1,5 @@
 __pycache__/
+.gitignore
 subtitle-env/
 config.txt
 CUDA-TEST.txt
@@ -12,3 +13,9 @@ progress_controller.txt
 resources.txt
 subtitle_workflow.txt
 text_tools.txt
+advanced_translation.txt
+gui_nllb.txt
+gui_m2m100.txt
+grammar.txt
+system-prompt-llm.md
+error.log

@@ -20,17 +20,15 @@ class ProgressController:
         self.p_current = 0
         self.post_start_time = 0.0
 
-    def start(self, total_lines):
-        # overall
-        self.total_steps = total_lines * 2
+    def start(self, translation_lines):
+        # Use actual translation line count and estimate post-processing
+        self.t_total = translation_lines
+        self.p_total = translation_lines  # Estimate post-processing as equal to translation
+        self.total_steps = self.t_total + self.p_total  # Include both phases from start
         self.done_steps = 0
-        self.start_time = time.time()
-
-        # per phase
-        self.t_total = total_lines
-        self.p_total = total_lines
         self.t_current = 0
         self.p_current = 0
+        self.start_time = time.time()
 
         # UI reset
         self.progress_var.set(0)
@@ -40,24 +38,33 @@ class ProgressController:
 
     def set_post_total(self, post_total):
         """
-        Adjust the size of the post-processing phase after translation completes.
+        Update the actual post-processing total, replacing the initial estimate.
         """
         post_total = max(0, int(post_total))
+        old_p_total = self.p_total
         self.p_total = post_total
-
-        # New total_steps = translation steps (t_total) + actual post steps (p_total)
         self.total_steps = self.t_total + self.p_total
-
-        # Clamp done_steps if we’ve overshot
+        
+        # If the post-processing total changed significantly from our estimate,
+        # adjust done_steps proportionally to maintain smooth progress
+        if old_p_total != self.p_total and old_p_total > 0:
+            old_total = self.t_total + old_p_total
+            if old_total > 0:
+                # Maintain the same proportion of work completed
+                progress_ratio = self.done_steps / old_total
+                self.done_steps = int(progress_ratio * self.total_steps)
+        
+        # Clamp done_steps if we've overshot
         if self.done_steps > self.total_steps:
             self.done_steps = self.total_steps
-
-        # Refresh the status line (you could also recalc ETA here)
+            
+        # Update UI to reflect current progress
         pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
+        self.progress_var.set(pct)
         self._update_ui(int(pct), f"{int(pct)}% | Time remaining: --:--")
-        self.post_start_time = 0.0  # Reset post-processing timer
+        self.post_start_time = 0.0
 
-
+    # In progress_controller.py
     def _step_ui(self, steps=1):
         if self.total_steps <= 0 or steps <= 0:
             return
@@ -66,23 +73,32 @@ class ProgressController:
         if self.done_steps > self.total_steps:
             self.done_steps = self.total_steps
 
-        pct = (self.done_steps / self.total_steps) * 100
+        pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
         self.progress_var.set(pct)
 
+        # Always update overall progress and ETA
         elapsed = time.time() - self.start_time
         avg_per_step = (elapsed / self.done_steps) if self.done_steps else 0.0
         rem_secs = avg_per_step * (self.total_steps - self.done_steps)
         mins, secs = divmod(int(rem_secs), 60)
+        self._update_ui(int(pct), f"{int(pct)}% | Time remaining: {mins:02d}:{secs:02d}")
 
-        self._update_ui(pct, f"{int(pct)}% | Time remaining: {mins:02d}:{secs:02d}")
 
     # ——— Translation updates (thread-safe) ———
     def update_translation_progress(self, current, total):
+        import logging
         if total <= 0:
             return
+        logging.debug(f"[ProgressController] update_translation_progress: current={current}, total={total}")
         self.root.after(0, self._do_translation_update, current, total)
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     def _do_translation_update(self, current, total):
+        import logging
         # clamp & compute delta
         current = max(0, min(current, total))
         delta = max(0, current - self.t_current)
@@ -91,16 +107,31 @@ class ProgressController:
         pct = int((current / total) * 100) if total else 0
         self.translation_label.config(text=f"Translation: {pct}%")
 
+        logging.debug(f"[ProgressController] _do_translation_update: current={current}, total={total}, delta={delta}")
         # advance overall by delta steps
         self._step_ui(delta)
+        
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     # ——— Post-processing updates (thread-safe) ———
     def update_post_progress(self, current, total):
+        import logging
         if total <= 0:
             return
+        logging.debug(f"[ProgressController] update_post_progress: current={current}, total={total}")
         self.root.after(0, self._do_post_update, current, total)
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     def _do_post_update(self, current, total):
+        import logging
         # clamp & compute delta
         current = max(0, min(current, total))
         delta = max(0, current - self.p_current)
@@ -112,27 +143,39 @@ class ProgressController:
         if self.post_start_time == 0.0 and current > 0:
             self.post_start_time = time.time()
 
-        # ETA calculation for post-processing only
-        if self.p_current > 0 and self.post_start_time > 0.0:
-            elapsed = time.time() - self.post_start_time
-            avg_per_step = elapsed / self.p_current
-            rem_secs = avg_per_step * (self.p_total - self.p_current)
-            mins, secs = divmod(int(rem_secs), 60)
-            eta_str = f"Time remaining: {mins:02d}:{secs:02d}"
-        else:
-            eta_str = "Time remaining: --:--"
+        # Only show percentage in post-processing label (no ETA)
+        self.post_label.config(text=f"Post-processing: {pct}%")
 
-        self.post_label.config(text=f"Post-processing: {pct}% | {eta_str}")
-
+        logging.debug(f"[ProgressController] _do_post_update: current={current}, total={total}, delta={delta}")
         # advance overall by delta steps
         self._step_ui(delta)
 
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
+
+        # If post-processing is complete, set progress bar and labels to 100%
+        if current >= total and total > 0:
+            self.progress_var.set(100)
+            self.status_label.config(text="100% | Time remaining: 00:00")
+            self.post_label.config(text="Post-processing: complete")
+            try:
+                self.root.update_idletasks()
+            except Exception:
+                pass  # Ignore if window is destroyed
+
     def show_post_start(self):
-        # switch UI to phase 2 at 50% (no counter change here)
-        pct = (self.done_steps / self.total_steps) * 100 if self.total_steps else 0
+        # Don't change done_steps or total_steps here - they're already correct
+        # Just update the UI to show post-processing has started
         self.post_start_time = 0.0
-        self.post_label.config(text="Post-processing: 0% | Time remaining: --:--")
-        self._update_ui(pct, f"Post-processing: 0% | Time remaining: --:--")
+        # Clear or update translation label when post-processing starts
+        self.translation_label.config(text="Translation: complete")
+        self.post_label.config(text="Post-processing: 0%")
+        # Keep current progress - don't recalculate
+        current_pct = self.progress_var.get()
+        self._update_ui(current_pct, f"{int(current_pct)}% | Post-processing starting...")
 
     def reset_ui(self):
         self.progress_var.set(0)
@@ -155,7 +198,11 @@ class ProgressController:
 
     def _update_ui(self, pct, status):
         self.status_label.config(text=status)
-        self.root.update_idletasks()
+        # Force UI update even when window is not in focus
+        try:
+            self.root.update_idletasks()
+        except Exception:
+            pass  # Ignore if window is destroyed
 
     # optional compatibility aliases
     show_post_processing_start = show_post_start
