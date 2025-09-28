@@ -83,7 +83,11 @@ def main():
         from subtitle_workflow import translate_with_context_nllb, correct_text_batch_nllb
         from models import get_nllb_globals
         from utils import load_subtitle_lines, save_subtitle_lines
-        from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, group_dialogue_lines, split_grouped_translations
+        from text_tools import (
+            extract_newline_tags, insert_newline_tags_at_wordidx, 
+            extract_tags_with_placeholders, restore_tags_from_placeholders,
+            group_dialogue_lines, split_grouped_translations
+        )
         
         # CLI Start event
         on_cli_start(args.input_file_path, args.src, args.tgt, output_path)
@@ -106,6 +110,9 @@ def main():
             cleaned, n_count = extract_newline_tags(line)
             cleaned_lines.append(cleaned)
             n_tag_counts.append(n_count)
+        
+        # Extract placeholder tags from cleaned lines (same as GUI)
+        placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in cleaned_lines]
         
         # Group dialogue lines for translation (same as GUI)
         grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
@@ -145,15 +152,21 @@ def main():
             translation_callback=create_post_processing_callback()
         )
         
+        # Restore placeholder tags after post-processing (same as GUI)
+        restored_placeholders = [
+            restore_tags_from_placeholders(corrected_all[i], placeholder_maps[i])
+            for i in range(len(corrected_all))
+        ]
+        
         # Re-insert \N tags at word index 0 (same as GUI default)
         n_wordidx = 0
         final_lines = [
             insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
-            for line, n_count in zip(corrected_all, n_tag_counts)
+            for line, n_count in zip(restored_placeholders, n_tag_counts)
         ]
         
         # Log all entries (same as GUI)
-        for idx, (orig, trans, final) in enumerate(zip(originals, translated, final_lines)):
+        for idx, (orig, trans, restored, final) in enumerate(zip(originals, translated, restored_placeholders, final_lines)):
             try:
                 logger.log_entry(idx, orig, trans, final, tags_before=[], tags_after=[])
             except Exception as e:
