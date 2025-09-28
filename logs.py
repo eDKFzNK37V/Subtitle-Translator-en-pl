@@ -137,47 +137,32 @@ class CLICallbackManager:
             status=f"{stage}: {current}/{total}"
         )
         self._dispatch_event(event_data)
-        
-        # Console progress update
+
+        # Console progress update with padding to clear previous output
         percentage = (current / total) * 100 if total > 0 else 0
-        print(f"\r{stage.capitalize()}: {current}/{total} ({percentage:.1f}%)", end='', flush=True)
-        
+        progress_str = f"{stage.capitalize()}: {current}/{total} ({percentage:.1f}%)"
+        # Pad with spaces to clear any leftover characters from previous longer lines
+        print(f"\r{progress_str.ljust(40)}", end='', flush=True)
+
         if current >= total:
             print()  # New line when complete
     
     def on_finish(self, output_file: str, total_lines: int, duration: Optional[float] = None):
         """Called when CLI translation finishes successfully."""
-        # Write session logs
-        write_session_log()
-        
-        # Finalize subtitle logger if available
-        if self.logger:
-            try:
-                self.logger.write_summary()
-                log_path = self.logger.get_log_path()
-            except Exception as e:
-                print(f"Warning: Could not write subtitle log: {e}")
-                log_path = None
-        else:
-            log_path = None
-        
+        # Only output summary and not write or print log file path (handled in main.py)
         event_data = CLIEventData(
             event_type='finish',
             output_file=output_file,
             status='completed',
-            log_path=log_path
+            log_path=None
         )
         self._dispatch_event(event_data)
-        
-        # Console output
         print(f"✓ Translation completed successfully!")
         print(f"Output saved to: {output_file}")
         if total_lines > 0:
             print(f"Processed {total_lines} lines")
         if duration:
             print(f"Duration: {duration:.1f}s")
-        if log_path and os.path.exists(log_path):
-            print(f"Log saved to: {log_path}")
     
     def on_error(self, error_msg: str, input_file: Optional[str] = None):
         """Called when CLI translation encounters an error."""
@@ -230,14 +215,14 @@ class SubtitleLogger:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         return f"{base}_log_{timestamp}.txt"
 
-    def log_cli_event(self, event_type, details=None):
-        """Log CLI events (start, progress, finish, error) for comprehensive tracking."""
-        cli_event = {
-            "timestamp": datetime.now().isoformat(),
-            "event_type": event_type,
-            "details": details or {}
-        }
-        self.cli_events.append(cli_event)
+    # def log_cli_event(self, event_type, details=None):
+    #     """Log CLI events (start, progress, finish, error) for comprehensive tracking."""
+    #     cli_event = {
+    #         "timestamp": datetime.now().isoformat(),
+    #         "event_type": event_type,
+    #         "details": details or {}
+    #     }
+    #     self.cli_events.append(cli_event)
 
     def log_entry(self, idx, original, translated, corrected, tags_before=None, tags_after=None):
         """
