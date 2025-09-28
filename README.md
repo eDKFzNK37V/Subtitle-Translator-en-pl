@@ -98,7 +98,52 @@ Contributions are welcome! Please follow these steps:
 
 This project is licensed under the MIT License. See the `LICENSE` file for details.
 
-### Help
+### CLI Callbacks and Logging
+
+The CLI now includes comprehensive callback and logging functionality for monitoring translation events:
+
+### CLI Event Types
+- **start**: Translation begins
+- **progress**: Translation progress updates
+- **finish**: Translation completes successfully  
+- **error**: Translation encounters an error
+
+### Automatic Logging
+The CLI automatically:
+- Creates detailed logs for each translation session
+- Tracks timing, progress, and any errors
+- Saves logs in the same directory as the output file
+- Provides console feedback with progress indicators
+
+### Custom Callbacks
+You can register custom callbacks to handle CLI events:
+
+```python
+from cli_callbacks import register_cli_callback, CLIEventData
+
+def my_callback(event_data: CLIEventData):
+    print(f"Event: {event_data.event_type}")
+    print(f"File: {event_data.input_file}")
+    if event_data.progress:
+        current, total = event_data.progress
+        print(f"Progress: {current}/{total}")
+
+register_cli_callback('on_progress', my_callback)
+```
+
+### Event Data Structure
+Each callback receives a `CLIEventData` object containing:
+- `event_type`: The type of event (start, progress, finish, error)
+- `input_file`: Path to the input subtitle file
+- `output_file`: Path to the output file (when available)
+- `src_lang`, `tgt_lang`: Source and target language codes
+- `status`: Current processing status
+- `error_msg`: Error message (for error events)
+- `progress`: Tuple of (current, total) for progress events
+- `log_path`: Path to the log file (when available)
+- `timestamp`: When the event occurred
+
+## Help
 
 The following usage instructions are available for the application:
 

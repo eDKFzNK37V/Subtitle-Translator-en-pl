@@ -1,7 +1,7 @@
 import logging
 from tkinter import filedialog, messagebox, ttk
 import threading
-import os
+import os, time
 from logs import SubtitleLogger
 from utils import load_subtitle_lines, save_subtitle_lines
 from subtitle_workflow import correct_text_batch_nllb, translate_with_context_nllb
@@ -568,7 +568,7 @@ def run_gui_nllb():
         
         threading.Thread(target=run_and_reset, daemon=True).start()
 
-    def on_translation_success(out_path: str, log_path: str | None = None):
+    def on_translation_success(out_path: str, log_path: str | None = None, start_time: float | None = None):
         browse_file_entry.config(state="normal")
         browse_file_btn.config(state="normal")
         start_btn.config(state="normal")
@@ -578,13 +578,20 @@ def run_gui_nllb():
         file_type_menu.config(state="normal")
         polish_only_cb.config(state="normal")
         n_tag_wordidx_spin.config(state="normal")
+        if start_time is not None:
+            duration = time.time() - start_time
+            msg = f"Translated file saved to:\n{out_path}\n\nTime taken: {duration:.1f} seconds"
+        else:
+            msg = f"Translated file saved to:\n{out_path}"
         controller.reset()
-        messagebox.showinfo("Success", f"Translated file saved to:\n{out_path}")
+        messagebox.showinfo("Success", msg)
         if log_path:
             messagebox.showinfo("Success", f"Log file saved to:\n{log_path}")
 
     def on_translation_error(err):
         start_btn.config(state="normal")
+        browse_file_entry.config(state="normal")
+        browse_file_btn.config(state="normal")
         # Re-enable options after error
         src_lang_menu.config(state="normal")
         tgt_lang_menu.config(state="normal")
