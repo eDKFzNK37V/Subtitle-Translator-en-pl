@@ -13,13 +13,13 @@ To use the GUI (recommended for most users):
     python main.py
 
 To translate a subtitle file from the command line:
-    python main.py <input_file_path> [--src en|pl] [--tgt en|pl]
+    python main.py <input_file_path> [--src en|pl] [--tgt en|pl] [--nwordix N]
 
 Examples:
-    python main.py example.srt
-    python main.py example.srt --src en --tgt pl
-    python main.py example.srt --src pl --tgt en
-
+    python main.py example.ass
+    python main.py example.ass --src en --tgt pl
+    python main.py example.ass --src pl --tgt en
+    python main.py example.ass --nwordix 'count of words needed for \\N'
 If you are not sure, just run: python main.py
 """)
 
@@ -49,6 +49,7 @@ def main():
     parser.add_argument("input_file_path", nargs="?", help="Path to the subtitle file to translate")
     parser.add_argument("--src", default="en", help="Source language code (default: en)")
     parser.add_argument("--tgt", default="pl", help="Target language code (default: pl)")
+    parser.add_argument("--nwordix", default=0, type=int, help="Word index after which word to insert \\N tags (default: 0, context-aware if 0)")
     parser.add_argument("-h", "--help", action="store_true", help="Show this help message and exit")
     args = parser.parse_args()
 
@@ -86,7 +87,8 @@ def main():
         from text_tools import (
             extract_newline_tags, insert_newline_tags_at_wordidx, 
             extract_tags_with_placeholders, restore_tags_from_placeholders,
-            group_dialogue_lines, split_grouped_translations
+            group_dialogue_lines, split_grouped_translations,
+            insert_newline_tags_contextaware
         )
         
         # CLI Start event
@@ -159,11 +161,17 @@ def main():
         ]
         
         # Re-insert \N tags at word index 0 (same as GUI default)
-        n_wordidx = 0
-        final_lines = [
-            insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
-            for line, n_count in zip(restored_placeholders, n_tag_counts)
-        ]
+        n_wordidx = args.nwordix
+        final_lines = []
+        for line, n_count, orig in zip(restored_placeholders, n_tag_counts, originals):
+            if n_count > 0:
+                if n_wordidx == 0:
+                    # Use context-aware placement (like GUI)
+                    final_lines.append(insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True))
+                else:
+                    final_lines.append(insert_newline_tags_at_wordidx(line, n_count, n_wordidx))
+            else:
+                final_lines.append(line)
         
         # Log all entries (same as GUI)
         for idx, (orig, trans, restored, final) in enumerate(zip(originals, translated, restored_placeholders, final_lines)):
