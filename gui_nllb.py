@@ -409,6 +409,8 @@ def run_gui_nllb():
                 for idx, line in enumerate(lines):
                     matches = tool.check(line)
                     def insert_result():
+                        if not text.winfo_exists():
+                            return
                         if matches:
                             text.insert(tk.END, f"Linia {idx+1}: {line}\n", "err")
                             for m in matches:

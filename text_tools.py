@@ -545,7 +545,21 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
 
     # Second pass: insert any missing tags at their approximate original positions
     # Sort by original position so earlier inserts don't break later positions too badly
-    missing = [(p, o, pos) for (p, o, pos) in ph_map if p not in translated]
+
+    # Normalize tags for robust duplicate prevention
+    def normalize_tag(tag):
+        # Remove all whitespace inside tag and lowercase
+        return re.sub(r"\\s+", "", tag).lower()
+
+    # Extract all tags from translated text
+    present_tags = set()
+    for m in re.finditer(r"{\\[^}]+}", translated):
+        present_tags.add(normalize_tag(m.group(0)))
+
+    missing = []
+    for (p, o, pos) in ph_map:
+        if p not in translated and normalize_tag(o) not in present_tags:
+            missing.append((p, o, pos))
     missing.sort(key=lambda x: x[2])
 
     def find_optimal_insertion_point(text: str, original_pos: int, original_total_len: int) -> int:
