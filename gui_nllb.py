@@ -763,6 +763,7 @@ def run_gui_nllb():
                 
                 # Apply subtitle style/tone adjustment according to architecture
                 from text_tools import adjust_subtitle_style_tone, insert_newline_tags_contextaware
+                import re  # For tag detection
                 style_adjusted = []
                 for line in restored_placeholders:
                     adjusted = adjust_subtitle_style_tone(line, tgt_lang.get())
@@ -772,7 +773,11 @@ def run_gui_nllb():
                 n_wordidx = n_tag_wordidx.get()
                 final_lines = []
                 for line, n_count in zip(style_adjusted, n_tag_counts):
-                    if n_count > 0:
+                    # Safety check: if line already contains \N tags, don't add more
+                    existing_tags = len(re.findall(r'\\[Nn]', line))
+                    if existing_tags > 0:
+                        final_line = line  # Already has tags, don't modify
+                    elif n_count > 0:
                         if n_wordidx == 0:
                             # Use context-aware placement (following architecture)
                             final_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True)

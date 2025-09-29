@@ -159,10 +159,11 @@ def validate_name_preservation(original: str, corrected: str) -> bool:
     preservation_rate = preserved_names / len(original_names) if original_names else 1.0
     return preservation_rate >= 0.8
 
-def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.85) -> str:
+def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.9) -> str:
     """
     Ultra-conservative grammar correction with minimal processing to prevent over-correction.
     Only applies corrections that are absolutely safe and necessary.
+    Enhanced to be even more conservative about unknown words and proper names.
     """
     if not text.strip() or len(text.strip()) < 8:  # Skip very short texts
         return text
@@ -185,6 +186,13 @@ def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.85)
             improved = re.sub(r'"([^"]*)"', r'„\1"', improved)  # Polish quotes
             return improved
     
+    # Additional check: skip correction if text contains many potential proper names
+    words = re.findall(r'\b[A-Za-z]+\b', text)
+    if len(words) > 0:
+        potential_names = [w for w in words if w[0].isupper() and len(w) > 3]
+        if len(potential_names) / len(words) > 0.3:  # More than 30% are potential names
+            return text  # Too risky to correct
+    
     try:
         corrected, confidence = correct_grammar(text)
     except Exception:
@@ -192,7 +200,7 @@ def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.85)
     
     # Ultra-strict validation - reject most corrections
     
-    # 1. Confidence must be very high
+    # 1. Confidence must be very high (increased threshold)
     if confidence < confidence_threshold:
         return text
     
@@ -206,16 +214,22 @@ def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.85)
         if not validate_name_preservation(text, corrected):
             return text
     
-    # 4. Length change must be minimal (less than 10%)
+    # 4. Length change must be minimal (less than 5% instead of 10%)
     length_change_ratio = abs(len(text) - len(corrected)) / max(len(text), 1)
-    if length_change_ratio > 0.1:
+    if length_change_ratio > 0.05:  # Reduced from 0.1 to 0.05
         return text
     
-    # 5. No significant word loss
+    # 5. No significant word loss (more strict)
     original_words = set(re.findall(r'\b\w+\b', text.lower()))
     corrected_words = set(re.findall(r'\b\w+\b', corrected.lower()))
     word_loss_ratio = len(original_words - corrected_words) / max(len(original_words), 1)
-    if word_loss_ratio > 0.05:  # Lost more than 5% of words
+    if word_loss_ratio > 0.02:  # Reduced from 0.05 to 0.02
+        return text
+    
+    # 6. Additional check: reject if any capitalized word is lost or significantly changed
+    original_caps = set(re.findall(r'\b[A-Z][a-z]+\b', text))
+    corrected_caps = set(re.findall(r'\b[A-Z][a-z]+\b', corrected))
+    if len(original_caps - corrected_caps) > 0:  # Any capitalized word lost
         return text
     
     return corrected
@@ -366,7 +380,13 @@ def insert_newline_tags_at_wordidx(text: str, n_tags: int, word_idx: int) -> str
     r"""
     Insert n_tags of \N at the specified word index (after the word at that index).
     If word_idx >= number of words, append at end.
+    Enhanced with protection against double insertion.
     """
+    # Check if text already contains \N tags - if so, don't add more
+    existing_tags = len(re.findall(r'\\[Nn]', text))
+    if existing_tags > 0:
+        return text  # Text already has tags, don't double-insert
+    
     # If word_idx == 0, use the automated context-aware function
     if word_idx == 0:
         return insert_newline_tags_contextaware(text, n_tags, prefer_punctuation=True)
@@ -392,6 +412,7 @@ def insert_newline_tags_at_wordidx(text: str, n_tags: int, word_idx: int) -> str
 def insert_newline_tags_contextaware(text: str, n_tags: int, prefer_punctuation: bool = True) -> str:
     r"""
     Context-aware insertion of \N tags using punctuation and clause boundaries.
+    Enhanced with protection against double insertion.
     
     Args:
         text: The text to insert tags into
@@ -403,6 +424,11 @@ def insert_newline_tags_contextaware(text: str, n_tags: int, prefer_punctuation:
     """
     if n_tags <= 0 or not text.strip():
         return text
+    
+    # Check if text already contains \N tags - if so, don't add more
+    existing_tags = len(re.findall(r'\\[Nn]', text))
+    if existing_tags > 0:
+        return text  # Text already has tags, don't double-insert
     
     # Find potential insertion points
     insertion_points = []
