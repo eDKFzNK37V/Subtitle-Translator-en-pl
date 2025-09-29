@@ -61,11 +61,18 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
       - src_code/tgt_code are already in NLLB form (e.g. "eng_Latn", "pol_Latn")
     
     Parameters:
-      - num_beams: Number of beams for beam search (default: 3)
-      - length_penalty: Length penalty for beam search (default: 1.0)
-      - temperature: Sampling temperature when do_sample=True (default: 1.0)
+      - num_beams: Number of beams for beam search (default: 3, range: 1-10)
+      - length_penalty: Length penalty for beam search (default: 1.0, range: 0.1-2.0)
+      - temperature: Sampling temperature when do_sample=True (default: 1.0, range: 0.1-2.0)
       - do_sample: Whether to use sampling instead of greedy decoding (default: False)
     """
+    # Parameter validation and bounds checking
+    num_beams = max(1, min(10, int(num_beams)))
+    length_penalty = max(0.1, min(2.0, float(length_penalty)))
+    temperature = max(0.1, min(2.0, float(temperature)))
+    max_length = max(32, min(512, int(max_length)))
+    no_repeat_ngram_size = max(1, min(5, int(no_repeat_ngram_size)))
+    repetition_penalty = max(0.5, min(2.0, float(repetition_penalty)))
     # Directly set the NLLB tokenizer’s src and tgt
     tok.src_lang = src_code
     tgt_id = tok.convert_tokens_to_ids(tgt_code)

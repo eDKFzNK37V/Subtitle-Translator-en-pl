@@ -108,10 +108,38 @@ def run_gui_nllb():
     advanced_frame = tk.LabelFrame(root, text="Advanced Translation Parameters", padx=5, pady=5)
     advanced_frame.grid(row=6, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
     
+    # Parameter validation functions
+    def validate_beams(value):
+        try:
+            val = int(value)
+            return 1 <= val <= 10
+        except:
+            return False
+    
+    def validate_penalty_temp(value):
+        try:
+            val = float(value)
+            return 0.1 <= val <= 2.0
+        except:
+            return False
+    
+    def validate_batch_size(value):
+        try:
+            val = int(value)
+            return 1 <= val <= 32
+        except:
+            return False
+    
+    # Register validation commands
+    vcmd_beams = (root.register(validate_beams), '%P')
+    vcmd_penalty_temp = (root.register(validate_penalty_temp), '%P')
+    vcmd_batch = (root.register(validate_batch_size), '%P')
+    
     # Beam search parameters
     num_beams_var = tk.IntVar(value=3)
     tk.Label(advanced_frame, text="Number of Beams:").grid(row=0, column=0, sticky="w")
-    num_beams_spin = tk.Spinbox(advanced_frame, from_=1, to=10, textvariable=num_beams_var, width=5)
+    num_beams_spin = tk.Spinbox(advanced_frame, from_=1, to=10, textvariable=num_beams_var, 
+                               width=5, validate='key', validatecommand=vcmd_beams)
     num_beams_spin.grid(row=0, column=1, sticky="w")
     tk.Label(advanced_frame, text="(1-10, higher=better quality, slower)", font=("Arial", 8)).grid(row=0, column=2, sticky="w")
     
@@ -119,7 +147,8 @@ def run_gui_nllb():
     length_penalty_var = tk.DoubleVar(value=1.0)
     tk.Label(advanced_frame, text="Length Penalty:").grid(row=1, column=0, sticky="w")
     length_penalty_spin = tk.Spinbox(advanced_frame, from_=0.1, to=2.0, increment=0.1, 
-                                   textvariable=length_penalty_var, width=8, format="%.1f")
+                                   textvariable=length_penalty_var, width=8, format="%.1f",
+                                   validate='key', validatecommand=vcmd_penalty_temp)
     length_penalty_spin.grid(row=1, column=1, sticky="w")
     tk.Label(advanced_frame, text="(0.1-2.0, >1.0=longer, <1.0=shorter)", font=("Arial", 8)).grid(row=1, column=2, sticky="w")
     
@@ -129,7 +158,8 @@ def run_gui_nllb():
     
     tk.Label(advanced_frame, text="Temperature:").grid(row=2, column=0, sticky="w")
     temperature_spin = tk.Spinbox(advanced_frame, from_=0.1, to=2.0, increment=0.1,
-                                textvariable=temperature_var, width=8, format="%.1f")
+                                textvariable=temperature_var, width=8, format="%.1f",
+                                validate='key', validatecommand=vcmd_penalty_temp)
     temperature_spin.grid(row=2, column=1, sticky="w")
     tk.Label(advanced_frame, text="(0.1-2.0, higher=more creative)", font=("Arial", 8)).grid(row=2, column=2, sticky="w")
     
@@ -140,7 +170,8 @@ def run_gui_nllb():
     # Batch size
     batch_size_var = tk.IntVar(value=12)
     tk.Label(advanced_frame, text="Batch Size:").grid(row=4, column=0, sticky="w")
-    batch_size_spin = tk.Spinbox(advanced_frame, from_=1, to=32, textvariable=batch_size_var, width=5)
+    batch_size_spin = tk.Spinbox(advanced_frame, from_=1, to=32, textvariable=batch_size_var, 
+                                width=5, validate='key', validatecommand=vcmd_batch)
     batch_size_spin.grid(row=4, column=1, sticky="w")
     tk.Label(advanced_frame, text="(1-32, higher=faster, more memory)", font=("Arial", 8)).grid(row=4, column=2, sticky="w")
     
@@ -149,6 +180,39 @@ def run_gui_nllb():
     grammar_cb = tk.Checkbutton(advanced_frame, text="Enable Grammar Correction", 
                               variable=enable_grammar_var)
     grammar_cb.grid(row=5, column=0, columnspan=2, sticky="w")
+    
+    # Parameter presets
+    def apply_preset(preset_name):
+        if preset_name == "quality":
+            num_beams_var.set(5)
+            length_penalty_var.set(1.2)
+            temperature_var.set(0.8)
+            do_sample_var.set(False)
+            batch_size_var.set(8)
+        elif preset_name == "speed":
+            num_beams_var.set(1)
+            length_penalty_var.set(1.0)
+            temperature_var.set(1.0)
+            do_sample_var.set(False)
+            batch_size_var.set(16)
+        elif preset_name == "creative":
+            num_beams_var.set(3)
+            length_penalty_var.set(0.9)
+            temperature_var.set(1.3)
+            do_sample_var.set(True)
+            batch_size_var.set(12)
+    
+    # Preset buttons
+    preset_frame = tk.Frame(advanced_frame)
+    preset_frame.grid(row=6, column=0, columnspan=3, pady=5)
+    
+    tk.Label(preset_frame, text="Presets:", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+    tk.Button(preset_frame, text="Quality", command=lambda: apply_preset("quality"), 
+             bg="lightblue", width=8).pack(side=tk.LEFT, padx=2)
+    tk.Button(preset_frame, text="Speed", command=lambda: apply_preset("speed"), 
+             bg="lightgreen", width=8).pack(side=tk.LEFT, padx=2)
+    tk.Button(preset_frame, text="Creative", command=lambda: apply_preset("creative"), 
+             bg="lightyellow", width=8).pack(side=tk.LEFT, padx=2)
     
     # Reset to defaults button
     def reset_parameters():
@@ -159,8 +223,71 @@ def run_gui_nllb():
         batch_size_var.set(12)
         enable_grammar_var.set(True)
     
-    reset_btn = tk.Button(advanced_frame, text="Reset to Defaults", command=reset_parameters)
-    reset_btn.grid(row=5, column=2, sticky="w")
+    tk.Button(preset_frame, text="Reset", command=reset_parameters, 
+             bg="lightcoral", width=8).pack(side=tk.LEFT, padx=2)
+    
+    # Help button
+    def show_help():
+        help_window = tk.Toplevel(root)
+        help_window.title("Translation Parameters Help")
+        help_window.geometry("600x500")
+        help_window.resizable(True, True)
+        
+        help_text = """
+🚀 TRANSLATION PARAMETERS GUIDE
+
+📊 NUMBER OF BEAMS (1-10)
+• Controls translation quality vs speed
+• Higher values = better quality, slower translation
+• Recommended: 3 (balanced), 5 (high quality), 1 (fast)
+
+📏 LENGTH PENALTY (0.1-2.0)
+• Controls output length preference
+• 1.0 = neutral, >1.0 = prefer longer, <1.0 = prefer shorter
+• For subtitles: 0.8-1.2 works well
+
+🌡️ TEMPERATURE (0.1-2.0)
+• Only used when "Enable Sampling" is checked
+• Controls creativity/randomness
+• Lower = more consistent, Higher = more creative
+• Recommended: 0.8-1.2 for most cases
+
+🎲 ENABLE SAMPLING
+• Unchecked = deterministic (same input = same output)
+• Checked = uses temperature for varied outputs
+• Use for creative translations or when stuck in patterns
+
+📦 BATCH SIZE (1-32)
+• Number of lines processed together
+• Higher = faster but uses more memory
+• Lower if you get out-of-memory errors
+• Recommended: 8-16 for most systems
+
+📝 GRAMMAR CORRECTION
+• Applies additional grammar checking after translation
+• May slow down processing but improves quality
+• Disable if translations are already very good
+
+🎯 PRESETS:
+• Quality: Best results, slower (beams=5, penalty=1.2)
+• Speed: Fast translation (beams=1, larger batches)
+• Creative: More varied outputs (sampling enabled)
+        """
+        
+        text_widget = tk.Text(help_window, wrap=tk.WORD, font=("Arial", 10), padx=10, pady=10)
+        text_widget.insert(tk.END, help_text)
+        text_widget.config(state=tk.DISABLED)
+        
+        scrollbar = tk.Scrollbar(help_window, command=text_widget.yview)
+        text_widget.config(yscrollcommand=scrollbar.set)
+        
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        tk.Button(help_window, text="Close", command=help_window.destroy).pack(pady=10)
+    
+    tk.Button(preset_frame, text="Help", command=show_help, 
+             bg="lightsteelblue", width=8).pack(side=tk.LEFT, padx=2)
 
     # ─── Progress & Status ────────────────────────────────────────────────────────
     progress_var = tk.DoubleVar(value=0)

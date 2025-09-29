@@ -35,9 +35,15 @@ def correct_punctuation(text, model_choice="kredor"):
         corrected_words.append(current_word)
     return " ".join(corrected_words)
 
-def correct_grammar(text):
+def correct_grammar(text, num_beams=3, confidence_threshold=0.6):
     """
+    Enhanced grammar correction with configurable parameters.
     Optimized grammar correction with confidence scoring for performance.
+    
+    Parameters:
+        text: Input text to correct
+        num_beams: Number of beams for beam search (default: 3)
+        confidence_threshold: Minimum confidence to apply correction (default: 0.6)
     """
     try:
         inputs = GRAMMAR_TOKENIZER.encode("gec: " + text, return_tensors="pt", max_length=200, truncation=True).to(DEVICE)
@@ -45,7 +51,7 @@ def correct_grammar(text):
             outputs = GRAMMAR_MODEL.generate(
                 inputs, 
                 max_length=200,  # Reduced for performance
-                num_beams=3,     # Reduced for speed
+                num_beams=num_beams,     # Configurable beam count
                 early_stopping=True,
                 output_scores=True,
                 return_dict_in_generate=True,
@@ -59,8 +65,13 @@ def correct_grammar(text):
             confidence = 1.0 - abs(len(text) - len(corrected)) / max(len(text), len(corrected))
         else:
             confidence = 0.4  # Low confidence for significant changes
+        
+        # Apply confidence threshold
+        if confidence >= confidence_threshold:
+            return corrected, confidence
+        else:
+            return text, confidence  # Return original if confidence too low
             
-        return corrected, confidence
     except Exception:
         return text, 0.0
 
