@@ -38,16 +38,26 @@ python main.py
 
 To translate a subtitle file from the command line:
 
+#### Basic usage
+
 ```bash
-python main.py <input_file> [--src en|pl] [--tgt en|pl]
+python main.py <input_file> [--src en|pl] [--tgt en|pl] [--nwordix N]
 ```
 
-Examples:
+**Arguments:**
+
+- `<input_file>`: Path to the subtitle file to translate (`.ass`, `.srt`, `.txt`)
+- `--src`: Source language code (default: `en`)
+- `--tgt`: Target language code (default: `pl`)
+- `--nwordix`: Word index after which to insert `\N` tags (default: `0`, context-aware if `0`)
+
+**Examples:**
 
 ```bash
 python main.py example.ass
 python main.py example.ass --src en --tgt pl
 python main.py example.ass --src pl --tgt en
+python main.py example.ass --n-tag-word-index 5
 ```
 
 If you are not sure, just run:
@@ -55,6 +65,26 @@ If you are not sure, just run:
 ```bash
 python main.py
 ```
+
+#### Advanced usage
+
+- To control where `\N` tags are re-inserted, use ``--nwordix N`.
+  - `0` in command (default): Context-aware placement (recommended for most cases)
+  - Any positive integer: Insert after the Nth word in each line
+
+#### Error Logging
+
+- Errors and exceptions are logged to `error.log` in the working directory if they occur.
+- If your run is successful, `error.log` will remain empty.
+
+#### CLI/GUI Parity
+
+- The CLI and GUI use the same translation, tag handling, and logging pipeline. All features (including tag/placeholder handling and logging) are available in both modes.
+
+#### Troubleshooting
+
+- If you encounter issues, check the console output and `error.log` for details.
+- For tag placement issues, try running with `--n-tag-word-index 0` for context-aware behavior.
 
 ### Graphical User Interface (GUI)
 
@@ -103,19 +133,23 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 The CLI now includes comprehensive callback and logging functionality for monitoring translation events:
 
 ### CLI Event Types
+
 - **start**: Translation begins
 - **progress**: Translation progress updates
-- **finish**: Translation completes successfully  
+- **finish**: Translation completes successfully
 - **error**: Translation encounters an error
 
 ### Automatic Logging
+
 The CLI automatically:
+
 - Creates detailed logs for each translation session
 - Tracks timing, progress, and any errors
 - Saves logs in the same directory as the output file
 - Provides console feedback with progress indicators
 
 ### Custom Callbacks
+
 You can register custom callbacks to handle CLI events:
 
 ```python
@@ -132,7 +166,9 @@ register_cli_callback('on_progress', my_callback)
 ```
 
 ### Event Data Structure
+
 Each callback receives a `CLIEventData` object containing:
+
 - `event_type`: The type of event (start, progress, finish, error)
 - `input_file`: Path to the input subtitle file
 - `output_file`: Path to the output file (when available)
