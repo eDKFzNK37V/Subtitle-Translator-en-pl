@@ -174,7 +174,16 @@ def correct_grammar_with_fallback(text: str, confidence_threshold: float = 0.85)
     
     # Skip correction for text with many Polish characters to prevent corruption
     if total_polish_chars > len(text) * 0.2:  # More than 20% Polish characters
-        return text
+        # Apply Polish-specific improvements instead of general grammar correction
+        try:
+            from polish_morphology import enhance_polish_conjugation
+            return enhance_polish_conjugation(text)
+        except ImportError:
+            # Basic Polish improvements as fallback
+            improved = text
+            improved = re.sub(r'\bja jestem\b', 'jestem', improved, flags=re.IGNORECASE)
+            improved = re.sub(r'"([^"]*)"', r'„\1"', improved)  # Polish quotes
+            return improved
     
     try:
         corrected, confidence = correct_grammar(text)

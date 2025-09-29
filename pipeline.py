@@ -139,9 +139,28 @@ def correct_text_batch(lines, lang, progress_callback=None):
         
         # 4) Skip LanguageTool to avoid over-correction
         
-        # 5) Only apply minimal style fixes - the safest possible
+        # 5) Apply targeted improvements based on language and quality mode
         try:
-            # Only apply absolutely essential fixes
+            # Enhanced Polish processing for quality mode
+            if lang_lower == "pl":
+                enhanced_cleans = []
+                for text in cleans:
+                    enhanced = text
+                    # Apply Polish morphology improvements
+                    try:
+                        from polish_morphology import enhance_polish_conjugation, improve_polish_style
+                        enhanced = enhance_polish_conjugation(enhanced)
+                        enhanced = improve_polish_style(enhanced)
+                    except ImportError:
+                        # Basic Polish improvements as fallback
+                        enhanced = re.sub(r'\bja jestem\b', 'jestem', enhanced, flags=re.IGNORECASE)
+                        enhanced = re.sub(r'"([^"]*)"', r'„\1"', enhanced)  # Polish quotes
+                        enhanced = re.sub(r'\bdziękuję bardzo\b', 'dzięki', enhanced, flags=re.IGNORECASE)
+                    
+                    enhanced_cleans.append(enhanced)
+                cleans = enhanced_cleans
+            
+            # Apply general fixes for all languages
             cleans = [fix_common_translation_issues(text, lang_lower) for text in cleans]
         except Exception:
             pass  # If anything fails, keep original

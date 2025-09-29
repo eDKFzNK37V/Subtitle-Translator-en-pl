@@ -257,44 +257,64 @@ def run_gui_nllb():
         help_window.resizable(True, True)
         
         help_text = """
-🚀 TRANSLATION PARAMETERS GUIDE
+🚀 ENHANCED TRANSLATION PARAMETERS GUIDE
 
 📊 NUMBER OF BEAMS (1-10)
 • Controls translation quality vs speed
 • Higher values = better quality, slower translation
-• Recommended: 3 (balanced), 5 (high quality), 1 (fast)
+• Recommended: 3 (balanced), 8 (high quality), 1 (fast)
 
 📏 LENGTH PENALTY (0.1-2.0)
 • Controls output length preference
 • 1.0 = neutral, >1.0 = prefer longer, <1.0 = prefer shorter
 • For subtitles: 0.8-1.2 works well
+• Quality preset uses 1.3 for more detailed translations
 
 🌡️ TEMPERATURE (0.1-2.0)
 • Only used when "Enable Sampling" is checked
-• Controls creativity/randomness
+• Controls creativity/randomness in translation
 • Lower = more consistent, Higher = more creative
-• Recommended: 0.8-1.2 for most cases
+• Recommended: 0.7-0.8 (quality), 1.4+ (creative)
 
 🎲 ENABLE SAMPLING
 • Unchecked = deterministic (same input = same output)
-• Checked = uses temperature for varied outputs
-• Use for creative translations or when stuck in patterns
+• Checked = uses temperature for varied, natural outputs
+• Essential for Creative preset, disabled for Quality/Speed
+
+🎯 TOP-K SAMPLING (1-100)
+• Controls diversity of token selection during sampling
+• Lower values = more focused, Higher = more diverse
+• Only active when sampling is enabled
+• Quality: 40, Creative: 60, Speed: 50 (default)
+
+🎪 TOP-P NUCLEUS SAMPLING (0.1-1.0)
+• Controls probability mass for token selection
+• Lower = more conservative, Higher = more permissive
+• Works with Top-K to fine-tune sampling behavior
+• Quality: 0.85, Creative: 0.95, Speed: 0.9 (default)
 
 📦 BATCH SIZE (1-32)
 • Number of lines processed together
 • Higher = faster but uses more memory
 • Lower if you get out-of-memory errors
-• Recommended: 8-16 for most systems
+• Quality: 6, Speed: 20, Creative: 10
 
 📝 GRAMMAR CORRECTION
-• Applies additional grammar checking after translation
-• May slow down processing but improves quality
-• Disable if translations are already very good
+• Applies additional LanguageTool grammar checking
+• Includes Polish conjugation and inflection fixes
+• May slow down processing but improves accuracy
+• Especially effective for Polish verb/noun agreement
 
-🎯 PRESETS:
-• Quality: Best results, slower (beams=5, penalty=1.2)
-• Speed: Fast translation (beams=1, larger batches)
-• Creative: More varied outputs (sampling enabled)
+🎯 ENHANCED PRESETS:
+• Quality: 8 beams, aggressive post-processing, Polish-aware corrections
+• Speed: 1 beam, minimal processing, large batches for performance  
+• Creative: 4 beams, sampling enabled, diverse output generation
+
+💡 POLISH LANGUAGE TIPS:
+• Quality preset includes enhanced Polish conjugation checking
+• Grammar correction handles verb/noun/adjective agreement
+• Longer sentences benefit from higher length penalties
+• Use Creative preset for more natural, conversational Polish
         """
         
         text_widget = tk.Text(help_window, wrap=tk.WORD, font=("Arial", 10), padx=10, pady=10)

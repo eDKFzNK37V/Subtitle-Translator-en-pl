@@ -474,7 +474,7 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
 
 def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "", quality_mode: str = "balanced") -> str:
     """
-    Enhanced quality improvement with configurable processing intensity.
+    Enhanced quality improvement with configurable processing intensity and Polish morphology support.
     
     Parameters:
         quality_mode: "conservative" (minimal changes), "balanced" (default), "aggressive" (more changes)
@@ -498,12 +498,45 @@ def _enhance_translation_quality(translated_text: str, target_lang: str, source_
         enhanced = re.sub(r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), enhanced)
         # Fix common translation artifacts
         enhanced = re.sub(r'\b(a|an|the)\s+(a|an|the)\b', r'\1', enhanced, flags=re.IGNORECASE)
+        
+        # Apply Polish-specific improvements for Polish target language
+        if target_lang.lower() in ['pl', 'pol', 'polish']:
+            try:
+                from polish_morphology import enhance_polish_conjugation, improve_polish_style
+                enhanced = enhance_polish_conjugation(enhanced)
+                enhanced = improve_polish_style(enhanced)
+            except ImportError:
+                # Fallback to basic Polish improvements if module not available
+                enhanced = _basic_polish_improvements(enhanced)
+                
     elif quality_mode == "conservative":
         # Minimal processing for speed preset - just basic cleanup
         pass
     # "balanced" uses the default processing above
     
     return enhanced.strip()
+
+def _basic_polish_improvements(text: str) -> str:
+    """Basic Polish language improvements as fallback."""
+    if not text:
+        return text
+    
+    improved = text
+    
+    # Remove redundant pronouns (common in machine translation)
+    improved = re.sub(r'\bja jestem\b', 'jestem', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bty jesteś\b', 'jesteś', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bon jest\b', 'jest', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bona jest\b', 'jest', improved, flags=re.IGNORECASE)
+    
+    # Fix common Polish punctuation
+    improved = re.sub(r'"([^"]*)"', r'„\1"', improved)  # Polish quotation marks
+    
+    # Make more conversational for subtitles
+    improved = re.sub(r'\bdziękuję bardzo\b', 'dzięki', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bproszę bardzo\b', 'proszę', improved, flags=re.IGNORECASE)
+    
+    return improved
 
 
 
