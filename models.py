@@ -34,8 +34,8 @@ PUNCT_TOKENIZERS = {
     ),
 }
 
-# NLLB-200-1.3B model and tokenizer (preloaded as globals)
-NLLB_MODEL_NAME = "facebook/nllb-200-1.3B"
+# NLLB-200-3.3B model and tokenizer (preloaded as globals)
+NLLB_MODEL_NAME = "facebook/nllb-200-3.3B"
 NLLB_BEAMS = 5  # Optimized beam count for performance balance
 NLLB_BATCH_SIZE = 12  # Optimized batch size for memory efficiency
 NLLB_DTYPE = torch.float16 if torch.cuda.is_available() else None
