@@ -51,13 +51,20 @@ def load_nllb_13b():
 
 def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
                          max_length=256, num_beams=3, no_repeat_ngram_size=2,
-                         length_penalty=1.0, repetition_penalty=1.0):
+                         length_penalty=1.0, repetition_penalty=1.0, temperature=1.0,
+                         do_sample=False):
     """
     Optimized NLLB translation with improved quality and performance balance.
     Enhanced for subtitle translation with streamlined parameters.
     Assumes:
       - tok is the NLLB tokenizer
       - src_code/tgt_code are already in NLLB form (e.g. "eng_Latn", "pol_Latn")
+    
+    Parameters:
+      - num_beams: Number of beams for beam search (default: 3)
+      - length_penalty: Length penalty for beam search (default: 1.0)
+      - temperature: Sampling temperature when do_sample=True (default: 1.0)
+      - do_sample: Whether to use sampling instead of greedy decoding (default: False)
     """
     # Directly set the NLLB tokenizer’s src and tgt
     tok.src_lang = src_code
@@ -73,19 +80,26 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     ).to(device)
 
     with torch.no_grad():
-        # Optimized generation parameters balancing quality and speed
-        gen = model.generate(
-            **enc,
-            forced_bos_token_id=tgt_id,
-            max_length=max_length,
-            num_beams=num_beams,  # Conservative beam count for consistency
-            early_stopping=True,
-            length_penalty=length_penalty,  # Neutral length penalty
-            no_repeat_ngram_size=no_repeat_ngram_size,  # Conservative repetition control
-            do_sample=False,  # Deterministic for consistency
-            num_return_sequences=1,
-            repetition_penalty=repetition_penalty,  # Minimal repetition penalty
-        )
+        # Configurable generation parameters for quality and speed balance
+        gen_kwargs = {
+            "input_ids": enc.input_ids,
+            "attention_mask": enc.attention_mask,
+            "forced_bos_token_id": tgt_id,
+            "max_length": max_length,
+            "num_beams": num_beams,
+            "early_stopping": True,
+            "length_penalty": length_penalty,
+            "no_repeat_ngram_size": no_repeat_ngram_size,
+            "do_sample": do_sample,
+            "num_return_sequences": 1,
+            "repetition_penalty": repetition_penalty,
+        }
+        
+        # Add temperature only when sampling
+        if do_sample:
+            gen_kwargs["temperature"] = temperature
+            
+        gen = model.generate(**gen_kwargs)
     
     decoded = tok.batch_decode(gen, skip_special_tokens=True)
     
@@ -100,7 +114,8 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     return enhanced_results
 
 def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
-                         batch_size=12, progress_callback=None):
+                         batch_size=12, progress_callback=None, num_beams=3,
+                         length_penalty=1.0, temperature=1.0, do_sample=False):
     # Always use the model and tokenizer passed as arguments (do not overwrite with globals)
     # Map GUI codes ("en","pl") → NLLB codes ("eng_Latn","pol_Latn")
     src_code = get_model_lang_code(src_lang, "nllb")
@@ -111,7 +126,9 @@ def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
     while i < len(lines):
         try:
             batch = lines[i:i+bs]
-            preds = translate_batch_nllb(model, tok, device, batch, src_code, tgt_code)
+            preds = translate_batch_nllb(model, tok, device, batch, src_code, tgt_code,
+                                       num_beams=num_beams, length_penalty=length_penalty,
+                                       temperature=temperature, do_sample=do_sample)
             out.extend(preds)
             i += bs
             if progress_callback:
@@ -135,7 +152,10 @@ def translate_with_context_nllb(
     batch_size=12,
     polish_only=False,
     glossary=None,
-    translation_callback=None
+    translation_callback=None,
+    length_penalty=1.0,
+    temperature=1.0,
+    do_sample=False
 ):
     """
     Context-aware translation with dialogue grouping and robust tag handling.
@@ -182,7 +202,10 @@ def translate_with_context_nllb(
     translated_groups = []
     for i in range(0, len(grouped_clean), batch_size):
         batch = grouped_clean[i:i+batch_size]
-        preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang, batch_size=batch_size, progress_callback=None)
+        preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang, 
+                                   batch_size=batch_size, progress_callback=None,
+                                   num_beams=beams, length_penalty=length_penalty,
+                                   temperature=temperature, do_sample=do_sample)
         translated_groups.extend(preds)
         if translation_callback:
             progress = min(i + len(batch), len(grouped_clean))
@@ -200,17 +223,29 @@ def translate_with_context_nllb(
 
     return split_lines
 
-def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None):
+def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None, 
+                          enable_grammar_correction=True):
     """
     Enhanced NLLB correction using the comprehensive correction pipeline from pipeline.py
+    
+    Parameters:
+      - enable_grammar_correction: Whether to apply grammar correction (default: True)
     """
     from pipeline import correct_text_batch
     
     # Use the enhanced correction pipeline with NLLB model setup
     model_setup()  # Ensure NLLB model is loaded
     
-    # Apply the enhanced correction pipeline
-    corrected_lines = correct_text_batch(lines, tgt_lang, translation_callback)
+    if enable_grammar_correction:
+        # Apply the enhanced correction pipeline
+        corrected_lines = correct_text_batch(lines, tgt_lang, translation_callback)
+    else:
+        # Skip grammar correction, just return the original lines with minimal processing
+        from text_tools import clean_translation
+        corrected_lines = [clean_translation(line) for line in lines]
+        if translation_callback:
+            for i in range(1, len(lines) + 1):
+                translation_callback(i, len(lines))
     
     return corrected_lines
 

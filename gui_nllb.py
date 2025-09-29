@@ -103,6 +103,65 @@ def run_gui_nllb():
     file_type.trace_add("write", update_formatting_widgets)
     update_formatting_widgets()
 
+    # ─── Translation Parameters ───────────────────────────────────────────────────
+    # Advanced translation settings frame
+    advanced_frame = tk.LabelFrame(root, text="Advanced Translation Parameters", padx=5, pady=5)
+    advanced_frame.grid(row=6, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+    
+    # Beam search parameters
+    num_beams_var = tk.IntVar(value=3)
+    tk.Label(advanced_frame, text="Number of Beams:").grid(row=0, column=0, sticky="w")
+    num_beams_spin = tk.Spinbox(advanced_frame, from_=1, to=10, textvariable=num_beams_var, width=5)
+    num_beams_spin.grid(row=0, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(1-10, higher=better quality, slower)", font=("Arial", 8)).grid(row=0, column=2, sticky="w")
+    
+    # Length penalty
+    length_penalty_var = tk.DoubleVar(value=1.0)
+    tk.Label(advanced_frame, text="Length Penalty:").grid(row=1, column=0, sticky="w")
+    length_penalty_spin = tk.Spinbox(advanced_frame, from_=0.1, to=2.0, increment=0.1, 
+                                   textvariable=length_penalty_var, width=8, format="%.1f")
+    length_penalty_spin.grid(row=1, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(0.1-2.0, >1.0=longer, <1.0=shorter)", font=("Arial", 8)).grid(row=1, column=2, sticky="w")
+    
+    # Temperature and sampling
+    temperature_var = tk.DoubleVar(value=1.0)
+    do_sample_var = tk.BooleanVar(value=False)
+    
+    tk.Label(advanced_frame, text="Temperature:").grid(row=2, column=0, sticky="w")
+    temperature_spin = tk.Spinbox(advanced_frame, from_=0.1, to=2.0, increment=0.1,
+                                textvariable=temperature_var, width=8, format="%.1f")
+    temperature_spin.grid(row=2, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(0.1-2.0, higher=more creative)", font=("Arial", 8)).grid(row=2, column=2, sticky="w")
+    
+    sampling_cb = tk.Checkbutton(advanced_frame, text="Enable Sampling (uses temperature)", 
+                               variable=do_sample_var)
+    sampling_cb.grid(row=3, column=0, columnspan=2, sticky="w")
+    
+    # Batch size
+    batch_size_var = tk.IntVar(value=12)
+    tk.Label(advanced_frame, text="Batch Size:").grid(row=4, column=0, sticky="w")
+    batch_size_spin = tk.Spinbox(advanced_frame, from_=1, to=32, textvariable=batch_size_var, width=5)
+    batch_size_spin.grid(row=4, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(1-32, higher=faster, more memory)", font=("Arial", 8)).grid(row=4, column=2, sticky="w")
+    
+    # Grammar correction toggle
+    enable_grammar_var = tk.BooleanVar(value=True)
+    grammar_cb = tk.Checkbutton(advanced_frame, text="Enable Grammar Correction", 
+                              variable=enable_grammar_var)
+    grammar_cb.grid(row=5, column=0, columnspan=2, sticky="w")
+    
+    # Reset to defaults button
+    def reset_parameters():
+        num_beams_var.set(3)
+        length_penalty_var.set(1.0)
+        temperature_var.set(1.0)
+        do_sample_var.set(False)
+        batch_size_var.set(12)
+        enable_grammar_var.set(True)
+    
+    reset_btn = tk.Button(advanced_frame, text="Reset to Defaults", command=reset_parameters)
+    reset_btn.grid(row=5, column=2, sticky="w")
+
     # ─── Progress & Status ────────────────────────────────────────────────────────
     progress_var = tk.DoubleVar(value=0)
     ttk.Progressbar(
@@ -112,16 +171,16 @@ def run_gui_nllb():
         mode="determinate",
         maximum=100,
         variable=progress_var
-    ).grid(row=6, column=0, columnspan=3, pady=10)
+    ).grid(row=7, column=0, columnspan=3, pady=10)
 
     status_label = tk.Label(root, text="0%")
-    status_label.grid(row=7, column=0, columnspan=3)
+    status_label.grid(row=8, column=0, columnspan=3)
 
     translation_label = tk.Label(root, text="Translation: waiting")
-    translation_label.grid(row=8, column=0, columnspan=3)
+    translation_label.grid(row=9, column=0, columnspan=3)
 
     post_label = tk.Label(root, text="Post-processing: waiting")
-    post_label.grid(row=9, column=0, columnspan=3)
+    post_label.grid(row=10, column=0, columnspan=3)
 
     controller = ProgressController(
         root,
@@ -399,7 +458,7 @@ def run_gui_nllb():
         controller.start(total_lines)
 
         try:
-            # Translate grouped lines
+            # Translate grouped lines with user-selected parameters
             translated_groups = translate_with_context_nllb(
                 grouped_lines,
                 src_lang.get(),
@@ -407,8 +466,13 @@ def run_gui_nllb():
                 model,
                 tokenizer,
                 device,
-                polish_only.get(),
-                translation_callback=controller.update_translation_progress
+                beams=num_beams_var.get(),
+                batch_size=batch_size_var.get(),
+                polish_only=polish_only.get(),
+                translation_callback=controller.update_translation_progress,
+                length_penalty=length_penalty_var.get(),
+                temperature=temperature_var.get(),
+                do_sample=do_sample_var.get()
             )
             # Split translations back to original lines
             translated = split_grouped_translations(translated_groups, group_map)
@@ -435,7 +499,8 @@ def run_gui_nllb():
                         "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
                         else "This is a test sentence."
                     )
-                    correct_text_batch_nllb([warmup_sentence], src_lang.get(), tgt_lang.get())
+                    correct_text_batch_nllb([warmup_sentence], src_lang.get(), tgt_lang.get(),
+                                           enable_grammar_correction=enable_grammar_var.get())
                 except Exception as warm_err:
                     logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
                 
@@ -462,7 +527,8 @@ def run_gui_nllb():
                         batch = translated[:warmup_size]
                         cb = correct_text_batch_nllb(
                             batch, src_lang.get(), tgt_lang.get(), glossary=None,
-                            translation_callback=lambda done, _batch_total, total=total: controller.update_post_progress(done, total)
+                            translation_callback=lambda done, _batch_total, total=total: controller.update_post_progress(done, total),
+                            enable_grammar_correction=enable_grammar_var.get()
                         )
                         corrected_all.extend(cb or [])
                         # Granular update for each line in warmup batch
@@ -478,7 +544,8 @@ def run_gui_nllb():
                     try:
                         cb = correct_text_batch_nllb(
                             batch, src_lang.get(), tgt_lang.get(),
-                            translation_callback=lambda done, _batch_total, offset=start, total=total: controller.update_post_progress(done + offset, total)
+                            translation_callback=lambda done, _batch_total, offset=start, total=total: controller.update_post_progress(done + offset, total),
+                            enable_grammar_correction=enable_grammar_var.get()
                         )
                         corrected_all.extend(cb or [])
                         # Granular update for each line in this batch
@@ -602,6 +669,6 @@ def run_gui_nllb():
         controller.reset()
 
     start_btn = tk.Button(root, text="Start Translation", command=start_translation_thread)
-    start_btn.grid(row=10, column=0, columnspan=3, pady=10)
+    start_btn.grid(row=11, column=0, columnspan=3, pady=10)
 
     root.mainloop()
