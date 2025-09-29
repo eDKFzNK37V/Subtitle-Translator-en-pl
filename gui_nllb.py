@@ -167,44 +167,65 @@ def run_gui_nllb():
                                variable=do_sample_var)
     sampling_cb.grid(row=3, column=0, columnspan=2, sticky="w")
     
+    # Top-k and Top-p parameters (only for sampling)
+    top_k_var = tk.IntVar(value=50)
+    top_p_var = tk.DoubleVar(value=0.9)
+    
+    tk.Label(advanced_frame, text="Top-K:").grid(row=4, column=0, sticky="w")
+    top_k_spin = tk.Spinbox(advanced_frame, from_=1, to=100, textvariable=top_k_var, width=5)
+    top_k_spin.grid(row=4, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(1-100, sampling diversity)", font=("Arial", 8)).grid(row=4, column=2, sticky="w")
+    
+    tk.Label(advanced_frame, text="Top-P:").grid(row=5, column=0, sticky="w")
+    top_p_spin = tk.Spinbox(advanced_frame, from_=0.1, to=1.0, increment=0.1,
+                           textvariable=top_p_var, width=8, format="%.1f")
+    top_p_spin.grid(row=5, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(0.1-1.0, nucleus sampling)", font=("Arial", 8)).grid(row=5, column=2, sticky="w")
+    
     # Batch size
     batch_size_var = tk.IntVar(value=12)
-    tk.Label(advanced_frame, text="Batch Size:").grid(row=4, column=0, sticky="w")
+    tk.Label(advanced_frame, text="Batch Size:").grid(row=6, column=0, sticky="w")
     batch_size_spin = tk.Spinbox(advanced_frame, from_=1, to=32, textvariable=batch_size_var, 
                                 width=5, validate='key', validatecommand=vcmd_batch)
-    batch_size_spin.grid(row=4, column=1, sticky="w")
-    tk.Label(advanced_frame, text="(1-32, higher=faster, more memory)", font=("Arial", 8)).grid(row=4, column=2, sticky="w")
+    batch_size_spin.grid(row=6, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(1-32, higher=faster, more memory)", font=("Arial", 8)).grid(row=6, column=2, sticky="w")
     
     # Grammar correction toggle
     enable_grammar_var = tk.BooleanVar(value=True)
     grammar_cb = tk.Checkbutton(advanced_frame, text="Enable Grammar Correction", 
                               variable=enable_grammar_var)
-    grammar_cb.grid(row=5, column=0, columnspan=2, sticky="w")
+    grammar_cb.grid(row=7, column=0, columnspan=2, sticky="w")
     
-    # Parameter presets
+    # Parameter presets with more impactful differences
     def apply_preset(preset_name):
         if preset_name == "quality":
-            num_beams_var.set(5)
-            length_penalty_var.set(1.2)
-            temperature_var.set(0.8)
-            do_sample_var.set(False)
-            batch_size_var.set(8)
+            num_beams_var.set(8)  # Increased for better quality
+            length_penalty_var.set(1.3)  # More aggressive length preference
+            temperature_var.set(0.7)
+            do_sample_var.set(False)  # Deterministic for consistency
+            batch_size_var.set(6)  # Smaller batches for stability
+            top_k_var.set(40)  # More focused sampling when enabled
+            top_p_var.set(0.85)  # More conservative nucleus sampling
         elif preset_name == "speed":
-            num_beams_var.set(1)
-            length_penalty_var.set(1.0)
+            num_beams_var.set(1)  # Greedy decoding for maximum speed
+            length_penalty_var.set(1.0)  # Neutral
             temperature_var.set(1.0)
             do_sample_var.set(False)
-            batch_size_var.set(16)
+            batch_size_var.set(20)  # Large batches for speed
+            top_k_var.set(50)  # Default values
+            top_p_var.set(0.9)
         elif preset_name == "creative":
-            num_beams_var.set(3)
-            length_penalty_var.set(0.9)
-            temperature_var.set(1.3)
-            do_sample_var.set(True)
-            batch_size_var.set(12)
+            num_beams_var.set(4)  # Moderate beams
+            length_penalty_var.set(0.8)  # Prefer shorter, punchier translations
+            temperature_var.set(1.4)  # Higher creativity
+            do_sample_var.set(True)  # Enable sampling for variety
+            batch_size_var.set(10)
+            top_k_var.set(60)  # More diverse sampling
+            top_p_var.set(0.95)  # More permissive nucleus sampling
     
     # Preset buttons
     preset_frame = tk.Frame(advanced_frame)
-    preset_frame.grid(row=6, column=0, columnspan=3, pady=5)
+    preset_frame.grid(row=8, column=0, columnspan=3, pady=5)
     
     tk.Label(preset_frame, text="Presets:", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
     tk.Button(preset_frame, text="Quality", command=lambda: apply_preset("quality"), 
@@ -222,6 +243,8 @@ def run_gui_nllb():
         do_sample_var.set(False)
         batch_size_var.set(12)
         enable_grammar_var.set(True)
+        top_k_var.set(50)
+        top_p_var.set(0.9)
     
     tk.Button(preset_frame, text="Reset", command=reset_parameters, 
              bg="lightcoral", width=8).pack(side=tk.LEFT, padx=2)
@@ -585,6 +608,14 @@ def run_gui_nllb():
         controller.start(total_lines)
 
         try:
+            # Determine quality mode based on parameters
+            if num_beams_var.get() >= 7:  # Quality preset
+                quality_mode = "aggressive"
+            elif num_beams_var.get() <= 1:  # Speed preset  
+                quality_mode = "conservative"
+            else:
+                quality_mode = "balanced"
+                
             # Translate grouped lines with user-selected parameters
             translated_groups = translate_with_context_nllb(
                 grouped_lines,
@@ -599,7 +630,10 @@ def run_gui_nllb():
                 translation_callback=controller.update_translation_progress,
                 length_penalty=length_penalty_var.get(),
                 temperature=temperature_var.get(),
-                do_sample=do_sample_var.get()
+                do_sample=do_sample_var.get(),
+                top_k=top_k_var.get(),
+                top_p=top_p_var.get(),
+                quality_mode=quality_mode
             )
             # Split translations back to original lines
             translated = split_grouped_translations(translated_groups, group_map)

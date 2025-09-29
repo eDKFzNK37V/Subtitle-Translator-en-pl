@@ -44,10 +44,6 @@ NLLB_MODEL = AutoModelForSeq2SeqLM.from_pretrained(NLLB_MODEL_NAME, torch_dtype=
 NLLB_MODEL.eval()
 
 def get_nllb_globals():
-    model_name = "facebook/nllb-200-1.3B"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_name, torch_dtype=dtype).to(device).eval()
-    return model, tokenizer, device
+    """Return the pre-loaded global NLLB model instances for efficiency."""
+    return NLLB_MODEL, NLLB_TOKENIZER, DEVICE
 

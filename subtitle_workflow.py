@@ -52,7 +52,7 @@ def load_nllb_13b():
 def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
                          max_length=256, num_beams=3, no_repeat_ngram_size=2,
                          length_penalty=1.0, repetition_penalty=1.0, temperature=1.0,
-                         do_sample=False):
+                         do_sample=False, top_k=50, top_p=0.9, quality_mode="balanced"):
     """
     Optimized NLLB translation with improved quality and performance balance.
     Enhanced for subtitle translation with streamlined parameters.
@@ -65,6 +65,8 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
       - length_penalty: Length penalty for beam search (default: 1.0, range: 0.1-2.0)
       - temperature: Sampling temperature when do_sample=True (default: 1.0, range: 0.1-2.0)
       - do_sample: Whether to use sampling instead of greedy decoding (default: False)
+      - top_k: Top-k sampling parameter (default: 50)
+      - top_p: Top-p (nucleus) sampling parameter (default: 0.9)
     """
     # Parameter validation and bounds checking
     num_beams = max(1, min(10, int(num_beams)))
@@ -73,6 +75,8 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     max_length = max(32, min(512, int(max_length)))
     no_repeat_ngram_size = max(1, min(5, int(no_repeat_ngram_size)))
     repetition_penalty = max(0.5, min(2.0, float(repetition_penalty)))
+    top_k = max(1, min(100, int(top_k)))
+    top_p = max(0.1, min(1.0, float(top_p)))
     # Directly set the NLLB tokenizer’s src and tgt
     tok.src_lang = src_code
     tgt_id = tok.convert_tokens_to_ids(tgt_code)
@@ -102,9 +106,15 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
             "repetition_penalty": repetition_penalty,
         }
         
-        # Add temperature only when sampling
+        # Add sampling-specific parameters when sampling is enabled
         if do_sample:
             gen_kwargs["temperature"] = temperature
+            gen_kwargs["top_k"] = top_k
+            gen_kwargs["top_p"] = top_p
+            
+        # Debug logging (can be enabled during testing)
+        # print(f"[DEBUG] translate_batch_nllb params: beams={num_beams}, length_penalty={length_penalty}, "
+        #       f"temperature={temperature}, sampling={do_sample}, top_k={top_k}, top_p={top_p}")
             
         gen = model.generate(**gen_kwargs)
     
@@ -114,15 +124,18 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     enhanced_results = []
     target_lang = _get_target_lang_from_code(tgt_code)
     for idx, text in enumerate(decoded):
-        # Apply immediate quality improvements with optimized processing
-        enhanced_text = _enhance_translation_quality(text, target_lang, lines[idx] if idx < len(lines) else "")
+        # Apply quality improvements based on the preset/mode
+        enhanced_text = _enhance_translation_quality(text, target_lang, 
+                                                   lines[idx] if idx < len(lines) else "", 
+                                                   quality_mode)
         enhanced_results.append(enhanced_text)
     
     return enhanced_results
 
 def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
                          batch_size=12, progress_callback=None, num_beams=3,
-                         length_penalty=1.0, temperature=1.0, do_sample=False):
+                         length_penalty=1.0, temperature=1.0, do_sample=False,
+                         top_k=50, top_p=0.9, quality_mode="balanced"):
     # Always use the model and tokenizer passed as arguments (do not overwrite with globals)
     # Map GUI codes ("en","pl") → NLLB codes ("eng_Latn","pol_Latn")
     src_code = get_model_lang_code(src_lang, "nllb")
@@ -135,7 +148,8 @@ def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
             batch = lines[i:i+bs]
             preds = translate_batch_nllb(model, tok, device, batch, src_code, tgt_code,
                                        num_beams=num_beams, length_penalty=length_penalty,
-                                       temperature=temperature, do_sample=do_sample)
+                                       temperature=temperature, do_sample=do_sample,
+                                       top_k=top_k, top_p=top_p, quality_mode=quality_mode)
             out.extend(preds)
             i += bs
             if progress_callback:
@@ -162,7 +176,10 @@ def translate_with_context_nllb(
     translation_callback=None,
     length_penalty=1.0,
     temperature=1.0,
-    do_sample=False
+    do_sample=False,
+    top_k=50,
+    top_p=0.9,
+    quality_mode="balanced"
 ):
     """
     Context-aware translation with dialogue grouping and robust tag handling.
@@ -212,7 +229,8 @@ def translate_with_context_nllb(
         preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang, 
                                    batch_size=batch_size, progress_callback=None,
                                    num_beams=beams, length_penalty=length_penalty,
-                                   temperature=temperature, do_sample=do_sample)
+                                   temperature=temperature, do_sample=do_sample,
+                                   top_k=top_k, top_p=top_p, quality_mode=quality_mode)
         translated_groups.extend(preds)
         if translation_callback:
             progress = min(i + len(batch), len(grouped_clean))
@@ -454,23 +472,36 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
 
     return translated
 
-def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "") -> str:
+def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "", quality_mode: str = "balanced") -> str:
     """
-    Minimal quality enhancement to prevent over-correction issues.
-    Only applies the safest, most essential improvements.
+    Enhanced quality improvement with configurable processing intensity.
+    
+    Parameters:
+        quality_mode: "conservative" (minimal changes), "balanced" (default), "aggressive" (more changes)
     """
     if not translated_text.strip():
         return translated_text
     
     enhanced = translated_text
     
-    # Only essential spacing fixes - nothing more to prevent over-correction
+    # Essential spacing fixes (all modes)
     enhanced = re.sub(r'\s{2,}', ' ', enhanced)  # Multiple spaces to single
     enhanced = re.sub(r'\s+([.!?,:;])', r'\1', enhanced)  # Remove space before punctuation
     
-    # Capitalize first letter if needed
+    # Capitalize first letter if needed (all modes)
     if enhanced and enhanced[0].islower():
         enhanced = enhanced[0].upper() + enhanced[1:]
+    
+    # Additional processing based on quality mode
+    if quality_mode == "aggressive":
+        # More thorough processing for quality preset
+        enhanced = re.sub(r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), enhanced)
+        # Fix common translation artifacts
+        enhanced = re.sub(r'\b(a|an|the)\s+(a|an|the)\b', r'\1', enhanced, flags=re.IGNORECASE)
+    elif quality_mode == "conservative":
+        # Minimal processing for speed preset - just basic cleanup
+        pass
+    # "balanced" uses the default processing above
     
     return enhanced.strip()
 
