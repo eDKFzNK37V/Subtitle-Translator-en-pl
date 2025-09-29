@@ -755,12 +755,33 @@ def run_gui_nllb():
                     controller.root.update_idletasks()
                 root.after(0, final_update_and_stop)
 
-                # Insert \N tags at user-specified word index as the final step
-                n_wordidx = n_tag_wordidx.get()
-                final_lines = [
-                    insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
-                    for line, n_count in zip(corrected_all, n_tag_counts)
+                # Restore placeholder tags after post-processing
+                restored_placeholders = [
+                    restore_tags_from_placeholders(corrected_all[i], placeholder_maps[i])
+                    for i in range(len(corrected_all))
                 ]
+                
+                # Apply subtitle style/tone adjustment according to architecture
+                from text_tools import adjust_subtitle_style_tone, insert_newline_tags_contextaware
+                style_adjusted = []
+                for line in restored_placeholders:
+                    adjusted = adjust_subtitle_style_tone(line, tgt_lang.get())
+                    style_adjusted.append(adjusted)
+
+                # Context-aware \N tag reinsertion as the final step (following architecture)
+                n_wordidx = n_tag_wordidx.get()
+                final_lines = []
+                for line, n_count in zip(style_adjusted, n_tag_counts):
+                    if n_count > 0:
+                        if n_wordidx == 0:
+                            # Use context-aware placement (following architecture)
+                            final_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True)
+                        else:
+                            # Use word index-based insertion
+                            final_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+                    else:
+                        final_line = line
+                    final_lines.append(final_line)
                 for idx, (orig, trans, corr, final) in enumerate(zip(originals, translated, corrected_all, final_lines)):
                     try:
                         logger.log_entry(idx, orig, trans, final, tags_before=[], tags_after=[])

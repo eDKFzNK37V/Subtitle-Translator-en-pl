@@ -251,26 +251,86 @@ def translate_with_context_nllb(
 def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None, 
                           enable_grammar_correction=True):
     """
-    Enhanced NLLB correction using the comprehensive correction pipeline from pipeline.py
+    Enhanced NLLB correction following the complete architecture pipeline:
+    1. Neural grammar correction with confidence scoring/fallback
+    2. LanguageTool correction with timeout
+    3. Style/tone adjustment for subtitles
     
     Parameters:
       - enable_grammar_correction: Whether to apply grammar correction (default: True)
     """
     from pipeline import correct_text_batch
+    from text_tools import (
+        correct_grammar_with_fallback, 
+        adjust_subtitle_style_tone,
+        clean_translation,
+        group_dialogue_lines,
+        split_grouped_translations
+    )
+    import language_tool_python
+    from resources import tool_pl, tool_en
     
     # Use the enhanced correction pipeline with NLLB model setup
     model_setup()  # Ensure NLLB model is loaded
     
-    if enable_grammar_correction:
-        # Apply the enhanced correction pipeline
-        corrected_lines = correct_text_batch(lines, tgt_lang, translation_callback)
-    else:
-        # Skip grammar correction, just return the original lines with minimal processing
-        from text_tools import clean_translation
+    if not enable_grammar_correction:
+        # Skip grammar correction, just return minimal processing
         corrected_lines = [clean_translation(line) for line in lines]
         if translation_callback:
             for i in range(1, len(lines) + 1):
                 translation_callback(i, len(lines))
+        return corrected_lines
+    
+    # Follow the complete architecture pipeline for grammar correction
+    total = len(lines)
+    corrected_lines = []
+    
+    # Group dialogue lines for context preservation
+    grouped_lines, group_map = group_dialogue_lines(lines)
+    
+    grouped_corrected = []
+    for group_idx, group in enumerate(grouped_lines):
+        try:
+            # Step 1: Neural grammar correction with confidence scoring/fallback
+            corrected_group = correct_grammar_with_fallback(group, confidence_threshold=0.6)
+            
+            # Step 2: LanguageTool correction with timeout (following architecture)
+            if tgt_lang.lower() == "pl":
+                try:
+                    matches = tool_pl.check(corrected_group)
+                    corrected_group = language_tool_python.utils.correct(corrected_group, matches)
+                except Exception:
+                    pass  # Skip on timeout/error
+            elif tgt_lang.lower() == "en":
+                try:
+                    matches = tool_en.check(corrected_group)
+                    corrected_group = language_tool_python.utils.correct(corrected_group, matches)
+                except Exception:
+                    pass  # Skip on timeout/error
+            
+            # Step 3: Style/tone adjustment for subtitles (following architecture)
+            corrected_group = adjust_subtitle_style_tone(corrected_group, tgt_lang)
+            
+            # Step 4: Final cleanup
+            corrected_group = clean_translation(corrected_group)
+            
+            grouped_corrected.append(corrected_group)
+            
+        except Exception as e:
+            # Fallback to original on any error
+            grouped_corrected.append(group)
+            
+        # Update progress
+        if translation_callback:
+            progress = ((group_idx + 1) * len(lines)) // len(grouped_lines)
+            translation_callback(min(progress, total), total)
+    
+    # Split grouped corrections back to original lines
+    corrected_lines = split_grouped_translations(grouped_corrected, group_map)
+    
+    # Final progress update
+    if translation_callback:
+        translation_callback(total, total)
     
     return corrected_lines
 
