@@ -103,6 +103,235 @@ def run_gui_nllb():
     file_type.trace_add("write", update_formatting_widgets)
     update_formatting_widgets()
 
+    # ─── Translation Parameters ───────────────────────────────────────────────────
+    # Advanced translation settings frame
+    advanced_frame = tk.LabelFrame(root, text="Advanced Translation Parameters", padx=5, pady=5)
+    advanced_frame.grid(row=6, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+    
+    # Parameter validation functions
+    def validate_beams(value):
+        try:
+            val = int(value)
+            return 1 <= val <= 10
+        except:
+            return False
+    
+    def validate_penalty_temp(value):
+        try:
+            val = float(value)
+            return 0.1 <= val <= 2.0
+        except:
+            return False
+    
+    def validate_batch_size(value):
+        try:
+            val = int(value)
+            return 1 <= val <= 32
+        except:
+            return False
+    
+    # Register validation commands
+    vcmd_beams = (root.register(validate_beams), '%P')
+    vcmd_penalty_temp = (root.register(validate_penalty_temp), '%P')
+    vcmd_batch = (root.register(validate_batch_size), '%P')
+    
+    # Beam search parameters
+    num_beams_var = tk.IntVar(value=3)
+    tk.Label(advanced_frame, text="Number of Beams:").grid(row=0, column=0, sticky="w")
+    num_beams_spin = tk.Spinbox(advanced_frame, from_=1, to=10, textvariable=num_beams_var, 
+                               width=5, validate='key', validatecommand=vcmd_beams)
+    num_beams_spin.grid(row=0, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(1-10, higher=better quality, slower)", font=("Arial", 8)).grid(row=0, column=2, sticky="w")
+    
+    # Length penalty
+    length_penalty_var = tk.DoubleVar(value=1.0)
+    tk.Label(advanced_frame, text="Length Penalty:").grid(row=1, column=0, sticky="w")
+    length_penalty_spin = tk.Spinbox(advanced_frame, from_=0.1, to=2.0, increment=0.1, 
+                                   textvariable=length_penalty_var, width=8, format="%.1f",
+                                   validate='key', validatecommand=vcmd_penalty_temp)
+    length_penalty_spin.grid(row=1, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(0.1-2.0, >1.0=longer, <1.0=shorter)", font=("Arial", 8)).grid(row=1, column=2, sticky="w")
+    
+    # Temperature and sampling
+    temperature_var = tk.DoubleVar(value=1.0)
+    do_sample_var = tk.BooleanVar(value=False)
+    
+    tk.Label(advanced_frame, text="Temperature:").grid(row=2, column=0, sticky="w")
+    temperature_spin = tk.Spinbox(advanced_frame, from_=0.1, to=2.0, increment=0.1,
+                                textvariable=temperature_var, width=8, format="%.1f",
+                                validate='key', validatecommand=vcmd_penalty_temp)
+    temperature_spin.grid(row=2, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(0.1-2.0, higher=more creative)", font=("Arial", 8)).grid(row=2, column=2, sticky="w")
+    
+    sampling_cb = tk.Checkbutton(advanced_frame, text="Enable Sampling (uses temperature)", 
+                               variable=do_sample_var)
+    sampling_cb.grid(row=3, column=0, columnspan=2, sticky="w")
+    
+    # Top-k and Top-p parameters (only for sampling)
+    top_k_var = tk.IntVar(value=50)
+    top_p_var = tk.DoubleVar(value=0.9)
+    
+    tk.Label(advanced_frame, text="Top-K:").grid(row=4, column=0, sticky="w")
+    top_k_spin = tk.Spinbox(advanced_frame, from_=1, to=100, textvariable=top_k_var, width=5)
+    top_k_spin.grid(row=4, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(1-100, sampling diversity)", font=("Arial", 8)).grid(row=4, column=2, sticky="w")
+    
+    tk.Label(advanced_frame, text="Top-P:").grid(row=5, column=0, sticky="w")
+    top_p_spin = tk.Spinbox(advanced_frame, from_=0.1, to=1.0, increment=0.1,
+                           textvariable=top_p_var, width=8, format="%.1f")
+    top_p_spin.grid(row=5, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(0.1-1.0, nucleus sampling)", font=("Arial", 8)).grid(row=5, column=2, sticky="w")
+    
+    # Batch size
+    batch_size_var = tk.IntVar(value=12)
+    tk.Label(advanced_frame, text="Batch Size:").grid(row=6, column=0, sticky="w")
+    batch_size_spin = tk.Spinbox(advanced_frame, from_=1, to=32, textvariable=batch_size_var, 
+                                width=5, validate='key', validatecommand=vcmd_batch)
+    batch_size_spin.grid(row=6, column=1, sticky="w")
+    tk.Label(advanced_frame, text="(1-32, higher=faster, more memory)", font=("Arial", 8)).grid(row=6, column=2, sticky="w")
+    
+    # Grammar correction toggle
+    enable_grammar_var = tk.BooleanVar(value=True)
+    grammar_cb = tk.Checkbutton(advanced_frame, text="Enable Grammar Correction", 
+                              variable=enable_grammar_var)
+    grammar_cb.grid(row=7, column=0, columnspan=2, sticky="w")
+    
+    # Parameter presets with more impactful differences
+    def apply_preset(preset_name):
+        if preset_name == "quality":
+            num_beams_var.set(8)  # Increased for better quality
+            length_penalty_var.set(1.3)  # More aggressive length preference
+            temperature_var.set(0.7)
+            do_sample_var.set(False)  # Deterministic for consistency
+            batch_size_var.set(6)  # Smaller batches for stability
+            top_k_var.set(40)  # More focused sampling when enabled
+            top_p_var.set(0.85)  # More conservative nucleus sampling
+        elif preset_name == "speed":
+            num_beams_var.set(1)  # Greedy decoding for maximum speed
+            length_penalty_var.set(1.0)  # Neutral
+            temperature_var.set(1.0)
+            do_sample_var.set(False)
+            batch_size_var.set(20)  # Large batches for speed
+            top_k_var.set(50)  # Default values
+            top_p_var.set(0.9)
+        elif preset_name == "creative":
+            num_beams_var.set(4)  # Moderate beams
+            length_penalty_var.set(0.8)  # Prefer shorter, punchier translations
+            temperature_var.set(1.4)  # Higher creativity
+            do_sample_var.set(True)  # Enable sampling for variety
+            batch_size_var.set(10)
+            top_k_var.set(60)  # More diverse sampling
+            top_p_var.set(0.95)  # More permissive nucleus sampling
+    
+    # Preset buttons
+    preset_frame = tk.Frame(advanced_frame)
+    preset_frame.grid(row=8, column=0, columnspan=3, pady=5)
+    
+    tk.Label(preset_frame, text="Presets:", font=("Arial", 9, "bold")).pack(side=tk.LEFT)
+    tk.Button(preset_frame, text="Quality", command=lambda: apply_preset("quality"), 
+             bg="lightblue", width=8).pack(side=tk.LEFT, padx=2)
+    tk.Button(preset_frame, text="Speed", command=lambda: apply_preset("speed"), 
+             bg="lightgreen", width=8).pack(side=tk.LEFT, padx=2)
+    tk.Button(preset_frame, text="Creative", command=lambda: apply_preset("creative"), 
+             bg="lightyellow", width=8).pack(side=tk.LEFT, padx=2)
+    
+    # Reset to defaults button
+    def reset_parameters():
+        num_beams_var.set(3)
+        length_penalty_var.set(1.0)
+        temperature_var.set(1.0)
+        do_sample_var.set(False)
+        batch_size_var.set(12)
+        enable_grammar_var.set(True)
+        top_k_var.set(50)
+        top_p_var.set(0.9)
+    
+    tk.Button(preset_frame, text="Reset", command=reset_parameters, 
+             bg="lightcoral", width=8).pack(side=tk.LEFT, padx=2)
+    
+    # Help button
+    def show_help():
+        help_window = tk.Toplevel(root)
+        help_window.title("Translation Parameters Help")
+        help_window.geometry("600x500")
+        help_window.resizable(True, True)
+        
+        help_text = """
+🚀 ENHANCED TRANSLATION PARAMETERS GUIDE
+
+📊 NUMBER OF BEAMS (1-10)
+• Controls translation quality vs speed
+• Higher values = better quality, slower translation
+• Recommended: 3 (balanced), 8 (high quality), 1 (fast)
+
+📏 LENGTH PENALTY (0.1-2.0)
+• Controls output length preference
+• 1.0 = neutral, >1.0 = prefer longer, <1.0 = prefer shorter
+• For subtitles: 0.8-1.2 works well
+• Quality preset uses 1.3 for more detailed translations
+
+🌡️ TEMPERATURE (0.1-2.0)
+• Only used when "Enable Sampling" is checked
+• Controls creativity/randomness in translation
+• Lower = more consistent, Higher = more creative
+• Recommended: 0.7-0.8 (quality), 1.4+ (creative)
+
+🎲 ENABLE SAMPLING
+• Unchecked = deterministic (same input = same output)
+• Checked = uses temperature for varied, natural outputs
+• Essential for Creative preset, disabled for Quality/Speed
+
+🎯 TOP-K SAMPLING (1-100)
+• Controls diversity of token selection during sampling
+• Lower values = more focused, Higher = more diverse
+• Only active when sampling is enabled
+• Quality: 40, Creative: 60, Speed: 50 (default)
+
+🎪 TOP-P NUCLEUS SAMPLING (0.1-1.0)
+• Controls probability mass for token selection
+• Lower = more conservative, Higher = more permissive
+• Works with Top-K to fine-tune sampling behavior
+• Quality: 0.85, Creative: 0.95, Speed: 0.9 (default)
+
+📦 BATCH SIZE (1-32)
+• Number of lines processed together
+• Higher = faster but uses more memory
+• Lower if you get out-of-memory errors
+• Quality: 6, Speed: 20, Creative: 10
+
+📝 GRAMMAR CORRECTION
+• Applies additional LanguageTool grammar checking
+• Includes Polish conjugation and inflection fixes
+• May slow down processing but improves accuracy
+• Especially effective for Polish verb/noun agreement
+
+🎯 ENHANCED PRESETS:
+• Quality: 8 beams, aggressive post-processing, Polish-aware corrections
+• Speed: 1 beam, minimal processing, large batches for performance  
+• Creative: 4 beams, sampling enabled, diverse output generation
+
+💡 POLISH LANGUAGE TIPS:
+• Quality preset includes enhanced Polish conjugation checking
+• Grammar correction handles verb/noun/adjective agreement
+• Longer sentences benefit from higher length penalties
+• Use Creative preset for more natural, conversational Polish
+        """
+        
+        text_widget = tk.Text(help_window, wrap=tk.WORD, font=("Arial", 10), padx=10, pady=10)
+        text_widget.insert(tk.END, help_text)
+        text_widget.config(state=tk.DISABLED)
+        
+        scrollbar = tk.Scrollbar(help_window, command=text_widget.yview)
+        text_widget.config(yscrollcommand=scrollbar.set)
+        
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        tk.Button(help_window, text="Close", command=help_window.destroy).pack(pady=10)
+    
+    tk.Button(preset_frame, text="Help", command=show_help, 
+             bg="lightsteelblue", width=8).pack(side=tk.LEFT, padx=2)
+
     # ─── Progress & Status ────────────────────────────────────────────────────────
     progress_var = tk.DoubleVar(value=0)
     ttk.Progressbar(
@@ -112,16 +341,16 @@ def run_gui_nllb():
         mode="determinate",
         maximum=100,
         variable=progress_var
-    ).grid(row=6, column=0, columnspan=3, pady=10)
+    ).grid(row=7, column=0, columnspan=3, pady=10)
 
     status_label = tk.Label(root, text="0%")
-    status_label.grid(row=7, column=0, columnspan=3)
+    status_label.grid(row=8, column=0, columnspan=3)
 
     translation_label = tk.Label(root, text="Translation: waiting")
-    translation_label.grid(row=8, column=0, columnspan=3)
+    translation_label.grid(row=9, column=0, columnspan=3)
 
     post_label = tk.Label(root, text="Post-processing: waiting")
-    post_label.grid(row=9, column=0, columnspan=3)
+    post_label.grid(row=10, column=0, columnspan=3)
 
     controller = ProgressController(
         root,
@@ -180,6 +409,8 @@ def run_gui_nllb():
                 for idx, line in enumerate(lines):
                     matches = tool.check(line)
                     def insert_result():
+                        if not text.winfo_exists():
+                            return
                         if matches:
                             text.insert(tk.END, f"Linia {idx+1}: {line}\n", "err")
                             for m in matches:
@@ -399,7 +630,15 @@ def run_gui_nllb():
         controller.start(total_lines)
 
         try:
-            # Translate grouped lines
+            # Determine quality mode based on parameters
+            if num_beams_var.get() >= 7:  # Quality preset
+                quality_mode = "aggressive"
+            elif num_beams_var.get() <= 1:  # Speed preset  
+                quality_mode = "conservative"
+            else:
+                quality_mode = "balanced"
+                
+            # Translate grouped lines with user-selected parameters
             translated_groups = translate_with_context_nllb(
                 grouped_lines,
                 src_lang.get(),
@@ -407,8 +646,16 @@ def run_gui_nllb():
                 model,
                 tokenizer,
                 device,
-                polish_only.get(),
-                translation_callback=controller.update_translation_progress
+                beams=num_beams_var.get(),
+                batch_size=batch_size_var.get(),
+                polish_only=polish_only.get(),
+                translation_callback=controller.update_translation_progress,
+                length_penalty=length_penalty_var.get(),
+                temperature=temperature_var.get(),
+                do_sample=do_sample_var.get(),
+                top_k=top_k_var.get(),
+                top_p=top_p_var.get(),
+                quality_mode=quality_mode
             )
             # Split translations back to original lines
             translated = split_grouped_translations(translated_groups, group_map)
@@ -435,7 +682,8 @@ def run_gui_nllb():
                         "To jest testowe zdanie." if tgt_lang.get().lower() == "pl"
                         else "This is a test sentence."
                     )
-                    correct_text_batch_nllb([warmup_sentence], src_lang.get(), tgt_lang.get())
+                    correct_text_batch_nllb([warmup_sentence], src_lang.get(), tgt_lang.get(),
+                                           enable_grammar_correction=enable_grammar_var.get())
                 except Exception as warm_err:
                     logging.warning(f"[prewarm] Correction warm‑up failed: {warm_err}")
                 
@@ -462,7 +710,8 @@ def run_gui_nllb():
                         batch = translated[:warmup_size]
                         cb = correct_text_batch_nllb(
                             batch, src_lang.get(), tgt_lang.get(), glossary=None,
-                            translation_callback=lambda done, _batch_total, total=total: controller.update_post_progress(done, total)
+                            translation_callback=lambda done, _batch_total, total=total: controller.update_post_progress(done, total),
+                            enable_grammar_correction=enable_grammar_var.get()
                         )
                         corrected_all.extend(cb or [])
                         # Granular update for each line in warmup batch
@@ -478,7 +727,8 @@ def run_gui_nllb():
                     try:
                         cb = correct_text_batch_nllb(
                             batch, src_lang.get(), tgt_lang.get(),
-                            translation_callback=lambda done, _batch_total, offset=start, total=total: controller.update_post_progress(done + offset, total)
+                            translation_callback=lambda done, _batch_total, offset=start, total=total: controller.update_post_progress(done + offset, total),
+                            enable_grammar_correction=enable_grammar_var.get()
                         )
                         corrected_all.extend(cb or [])
                         # Granular update for each line in this batch
@@ -507,12 +757,52 @@ def run_gui_nllb():
                     controller.root.update_idletasks()
                 root.after(0, final_update_and_stop)
 
-                # Insert \N tags at user-specified word index as the final step
-                n_wordidx = n_tag_wordidx.get()
-                final_lines = [
-                    insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
-                    for line, n_count in zip(corrected_all, n_tag_counts)
+                # Restore placeholder tags after post-processing
+                restored_placeholders = [
+                    restore_tags_from_placeholders(corrected_all[i], placeholder_maps[i])
+                    for i in range(len(corrected_all))
                 ]
+                
+                # Apply subtitle style/tone adjustment according to architecture
+                from text_tools import adjust_subtitle_style_tone, insert_newline_tags_contextaware, clean_duplicate_newline_tags
+                import re  # For tag detection
+                style_adjusted = []
+                for line in restored_placeholders:
+                    adjusted = adjust_subtitle_style_tone(line, tgt_lang.get())
+                    style_adjusted.append(adjusted)
+
+                # Context-aware \N tag reinsertion as the final step (following architecture)
+                n_wordidx = n_tag_wordidx.get()
+                final_lines = []
+                for i, (line, n_count) in enumerate(zip(style_adjusted, n_tag_counts)):
+                    # Debug: Check what we're working with
+                    existing_tags = len(re.findall(r'\\[Nn]', line))
+                    
+                    # Safety check: if line already contains \N tags, don't add more
+                    if existing_tags > 0:
+                        final_line = line  # Already has tags, don't modify
+                        logging.debug(f"[tag_insert] Line {i} already has {existing_tags} tags, skipping insertion")
+                    elif n_count > 0:
+                        if n_wordidx == 0:
+                            # Use context-aware placement (following architecture)
+                            final_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True)
+                            logging.debug(f"[tag_insert] Line {i}: context-aware insertion of {n_count} tags")
+                        else:
+                            # Use word index-based insertion
+                            final_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+                            logging.debug(f"[tag_insert] Line {i}: word-index insertion of {n_count} tags at position {n_wordidx}")
+                    else:
+                        final_line = line
+                        logging.debug(f"[tag_insert] Line {i}: no tags to insert (n_count={n_count})")
+                    
+                    # Additional safety check after insertion
+                    final_tags = len(re.findall(r'\\[Nn]', final_line))
+                    if final_tags > n_count and n_count > 0:
+                        logging.warning(f"[tag_insert] Line {i}: More tags than expected! Expected: {n_count}, Found: {final_tags}")
+                        # If we have too many tags, clean them up
+                        final_line = clean_duplicate_newline_tags(final_line)
+                    
+                    final_lines.append(final_line)
                 for idx, (orig, trans, corr, final) in enumerate(zip(originals, translated, corrected_all, final_lines)):
                     try:
                         logger.log_entry(idx, orig, trans, final, tags_before=[], tags_after=[])
@@ -602,6 +892,6 @@ def run_gui_nllb():
         controller.reset()
 
     start_btn = tk.Button(root, text="Start Translation", command=start_translation_thread)
-    start_btn.grid(row=10, column=0, columnspan=3, pady=10)
+    start_btn.grid(row=11, column=0, columnspan=3, pady=10)
 
     root.mainloop()

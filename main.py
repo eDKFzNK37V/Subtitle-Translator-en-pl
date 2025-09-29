@@ -13,13 +13,27 @@ To use the GUI (recommended for most users):
     python main.py
 
 To translate a subtitle file from the command line:
-    python main.py <input_file_path> [--src en|pl] [--tgt en|pl] [--nwordix N]
+    python main.py <input_file_path> [options]
+
+Options:
+    --src en|pl           Source language (default: en)
+    --tgt en|pl           Target language (default: pl)
+    --nwordix N           Word index for \\N tag insertion (default: 0, context-aware)
+    --beams N             Number of beams for translation (default: 3, range: 1-10)
+    --length-penalty F    Length penalty (default: 1.0, range: 0.1-2.0)
+    --temperature F       Temperature for sampling (default: 1.0, range: 0.1-2.0)
+    --sampling            Enable sampling mode (uses temperature)
+    --batch-size N        Batch size (default: 12, range: 1-32)
+    --no-grammar          Disable grammar correction
 
 Examples:
     python main.py example.ass
     python main.py example.ass --src en --tgt pl
-    python main.py example.ass --src pl --tgt en
-    python main.py example.ass --nwordix 'count of words needed for \\N'
+    python main.py example.ass --beams 5 --length-penalty 1.2  # Higher quality
+    python main.py example.ass --beams 1 --batch-size 16       # Faster
+    python main.py example.ass --sampling --temperature 1.3    # More creative
+    python main.py example.ass --no-grammar                    # Skip grammar correction
+
 If you are not sure, just run: python main.py
 """)
 
@@ -50,6 +64,12 @@ def main():
     parser.add_argument("--src", default="en", help="Source language code (default: en)")
     parser.add_argument("--tgt", default="pl", help="Target language code (default: pl)")
     parser.add_argument("--nwordix", default=0, type=int, help="Word index after which word to insert \\N tags (default: 0, context-aware if 0)")
+    parser.add_argument("--beams", default=3, type=int, help="Number of beams for translation (default: 3, range: 1-10)")
+    parser.add_argument("--length-penalty", default=1.0, type=float, help="Length penalty for translation (default: 1.0, range: 0.1-2.0)")
+    parser.add_argument("--temperature", default=1.0, type=float, help="Temperature for sampling (default: 1.0, range: 0.1-2.0)")
+    parser.add_argument("--sampling", action="store_true", help="Enable sampling mode (uses temperature)")
+    parser.add_argument("--batch-size", default=12, type=int, help="Batch size for translation (default: 12, range: 1-32)")
+    parser.add_argument("--no-grammar", action="store_true", help="Disable grammar correction")
     parser.add_argument("-h", "--help", action="store_true", help="Show this help message and exit")
     args = parser.parse_args()
 
@@ -122,8 +142,9 @@ def main():
         # Store originals for logging
         originals = cleaned_lines[:]
         
-        # Translation phase
+        # Translation phase with user parameters
         print(f"Translating {len(grouped_lines)} grouped lines...")
+        print(f"Parameters: beams={args.beams}, length_penalty={args.length_penalty}, temperature={args.temperature}, sampling={args.sampling}")
         translated_groups = translate_with_context_nllb(
             grouped_lines,
             args.src,
@@ -131,7 +152,12 @@ def main():
             model,
             tokenizer,
             device,
-            translation_callback=create_translation_callback("translation")
+            beams=args.beams,
+            batch_size=args.batch_size,
+            translation_callback=create_translation_callback("translation"),
+            length_penalty=args.length_penalty,
+            temperature=args.temperature,
+            do_sample=args.sampling
         )
         
         # Split translations back to original lines (same as GUI)
@@ -140,8 +166,9 @@ def main():
         # Save intermediate translation (same as GUI)
         save_subtitle_lines(translated, output_path, subs, idx_map)
         
-        # Post-processing phase (missing from original CLI!)
+        # Post-processing phase with grammar correction toggle
         print(f"Post-processing {len(translated)} lines...")
+        print(f"Grammar correction: {'enabled' if not args.no_grammar else 'disabled'}")
         
         # Create logger (same as GUI)
         logger = SubtitleLogger(args.input_file_path, args.tgt, idx_map=idx_map)
@@ -151,7 +178,8 @@ def main():
             translated,
             args.src,
             args.tgt,
-            translation_callback=create_post_processing_callback()
+            translation_callback=create_post_processing_callback(),
+            enable_grammar_correction=not args.no_grammar
         )
         
         # Restore placeholder tags after post-processing (same as GUI)
