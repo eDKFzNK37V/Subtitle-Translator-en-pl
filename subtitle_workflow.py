@@ -292,7 +292,7 @@ def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translatio
     for group_idx, group in enumerate(grouped_lines):
         try:
             # Step 1: Neural grammar correction with confidence scoring/fallback
-            corrected_group = correct_grammar_with_fallback(group, confidence_threshold=0.6)
+            corrected_group = correct_grammar_with_fallback(group, confidence_threshold=0.9)
             
             # Step 2: LanguageTool correction with timeout (following architecture)
             if tgt_lang.lower() == "pl":

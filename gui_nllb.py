@@ -764,7 +764,7 @@ def run_gui_nllb():
                 ]
                 
                 # Apply subtitle style/tone adjustment according to architecture
-                from text_tools import adjust_subtitle_style_tone, insert_newline_tags_contextaware
+                from text_tools import adjust_subtitle_style_tone, insert_newline_tags_contextaware, clean_duplicate_newline_tags
                 import re  # For tag detection
                 style_adjusted = []
                 for line in restored_placeholders:
@@ -774,20 +774,34 @@ def run_gui_nllb():
                 # Context-aware \N tag reinsertion as the final step (following architecture)
                 n_wordidx = n_tag_wordidx.get()
                 final_lines = []
-                for line, n_count in zip(style_adjusted, n_tag_counts):
-                    # Safety check: if line already contains \N tags, don't add more
+                for i, (line, n_count) in enumerate(zip(style_adjusted, n_tag_counts)):
+                    # Debug: Check what we're working with
                     existing_tags = len(re.findall(r'\\[Nn]', line))
+                    
+                    # Safety check: if line already contains \N tags, don't add more
                     if existing_tags > 0:
                         final_line = line  # Already has tags, don't modify
+                        logging.debug(f"[tag_insert] Line {i} already has {existing_tags} tags, skipping insertion")
                     elif n_count > 0:
                         if n_wordidx == 0:
                             # Use context-aware placement (following architecture)
                             final_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True)
+                            logging.debug(f"[tag_insert] Line {i}: context-aware insertion of {n_count} tags")
                         else:
                             # Use word index-based insertion
                             final_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+                            logging.debug(f"[tag_insert] Line {i}: word-index insertion of {n_count} tags at position {n_wordidx}")
                     else:
                         final_line = line
+                        logging.debug(f"[tag_insert] Line {i}: no tags to insert (n_count={n_count})")
+                    
+                    # Additional safety check after insertion
+                    final_tags = len(re.findall(r'\\[Nn]', final_line))
+                    if final_tags > n_count and n_count > 0:
+                        logging.warning(f"[tag_insert] Line {i}: More tags than expected! Expected: {n_count}, Found: {final_tags}")
+                        # If we have too many tags, clean them up
+                        final_line = clean_duplicate_newline_tags(final_line)
+                    
                     final_lines.append(final_line)
                 for idx, (orig, trans, corr, final) in enumerate(zip(originals, translated, corrected_all, final_lines)):
                     try:

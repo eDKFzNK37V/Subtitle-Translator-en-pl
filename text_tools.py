@@ -35,7 +35,7 @@ def correct_punctuation(text, model_choice="kredor"):
         corrected_words.append(current_word)
     return " ".join(corrected_words)
 
-def correct_grammar(text, num_beams=3, confidence_threshold=0.6):
+def correct_grammar(text, num_beams=3, confidence_threshold=0.9):
     """
     Enhanced grammar correction with configurable parameters.
     Optimized grammar correction with confidence scoring for performance.
@@ -43,7 +43,7 @@ def correct_grammar(text, num_beams=3, confidence_threshold=0.6):
     Parameters:
         text: Input text to correct
         num_beams: Number of beams for beam search (default: 3)
-        confidence_threshold: Minimum confidence to apply correction (default: 0.6)
+        confidence_threshold: Minimum confidence to apply correction (default: 0.9)
     """
     try:
         inputs = GRAMMAR_TOKENIZER.encode("gec: " + text, return_tensors="pt", max_length=200, truncation=True).to(DEVICE)
@@ -409,6 +409,17 @@ def insert_newline_tags_at_wordidx(text: str, n_tags: int, word_idx: int) -> str
     new_words = words[:insert_at] + [tag_str] + words[insert_at:]
     return ''.join(new_words)
 
+def clean_duplicate_newline_tags(text: str) -> str:
+    r"""
+    Clean up duplicate \N tags that may have been inserted multiple times.
+    Replaces consecutive \N tags with single ones.
+    """
+    # Replace multiple consecutive \N tags with single \N
+    cleaned = re.sub(r'(\\[Nn]){2,}', r'\\N', text)
+    # Clean up any spaces that might have been left around tags
+    cleaned = re.sub(r'\s*\\[Nn]\s*', r'\\N', cleaned)
+    return cleaned
+
 def insert_newline_tags_contextaware(text: str, n_tags: int, prefer_punctuation: bool = True) -> str:
     r"""
     Context-aware insertion of \N tags using punctuation and clause boundaries.
@@ -632,7 +643,7 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
 
 # Session logging has been moved to logs.py
 
-def correct_grammar_batch(texts, confidence_threshold: float = 0.85, enable_logging: bool = True):
+def correct_grammar_batch(texts, confidence_threshold: float = 0.9, enable_logging: bool = True):
     """
     Minimalistic batched grammar correction to prevent over-correction and character loss.
     Only applies safe, essential corrections with strict validation.
