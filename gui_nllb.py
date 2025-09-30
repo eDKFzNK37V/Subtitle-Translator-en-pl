@@ -199,13 +199,13 @@ def run_gui_nllb():
     # Parameter presets with more impactful differences
     def apply_preset(preset_name):
         if preset_name == "quality":
-            num_beams_var.set(8)  # Increased for better quality
-            length_penalty_var.set(1.3)  # More aggressive length preference
-            temperature_var.set(0.7)
+            num_beams_var.set(10)  # Increased from 8 for even better quality with context
+            length_penalty_var.set(1.2)  # Adjusted for better natural length (was 1.3)
+            temperature_var.set(0.6)  # Lower for more consistent quality (was 0.7)
             do_sample_var.set(False)  # Deterministic for consistency
-            batch_size_var.set(6)  # Smaller batches for stability
-            top_k_var.set(40)  # More focused sampling when enabled
-            top_p_var.set(0.85)  # More conservative nucleus sampling
+            batch_size_var.set(4)  # Smaller batches for better context (was 6)
+            top_k_var.set(35)  # More focused for quality (was 40)
+            top_p_var.set(0.80)  # More conservative for quality (was 0.85)
         elif preset_name == "speed":
             num_beams_var.set(1)  # Greedy decoding for maximum speed
             length_penalty_var.set(1.0)  # Neutral
@@ -215,13 +215,13 @@ def run_gui_nllb():
             top_k_var.set(50)  # Default values
             top_p_var.set(0.9)
         elif preset_name == "creative":
-            num_beams_var.set(4)  # Moderate beams
-            length_penalty_var.set(0.8)  # Prefer shorter, punchier translations
-            temperature_var.set(1.4)  # Higher creativity
+            num_beams_var.set(5)  # Increased from 4 for better creative exploration
+            length_penalty_var.set(0.9)  # Less aggressive (was 0.8) for more natural flow
+            temperature_var.set(1.3)  # Slightly lower for more coherent creativity (was 1.4)
             do_sample_var.set(True)  # Enable sampling for variety
-            batch_size_var.set(10)
-            top_k_var.set(60)  # More diverse sampling
-            top_p_var.set(0.95)  # More permissive nucleus sampling
+            batch_size_var.set(8)  # Smaller for better quality (was 10)
+            top_k_var.set(55)  # Balanced (was 60)
+            top_p_var.set(0.92)  # More balanced (was 0.95)
     
     # Preset buttons
     preset_frame = tk.Frame(advanced_frame)
@@ -262,19 +262,19 @@ def run_gui_nllb():
 📊 NUMBER OF BEAMS (1-10)
 • Controls translation quality vs speed
 • Higher values = better quality, slower translation
-• Recommended: 3 (balanced), 8 (high quality), 1 (fast)
+• Recommended: 3 (balanced), 10 (high quality), 1 (fast)
 
 📏 LENGTH PENALTY (0.1-2.0)
 • Controls output length preference
 • 1.0 = neutral, >1.0 = prefer longer, <1.0 = prefer shorter
-• For subtitles: 0.8-1.2 works well
-• Quality preset uses 1.3 for more detailed translations
+• For subtitles: 0.8-1.2 works well for natural flow
+• Quality preset uses 1.2 for balanced, detailed translations
 
 🌡️ TEMPERATURE (0.1-2.0)
 • Only used when "Enable Sampling" is checked
 • Controls creativity/randomness in translation
 • Lower = more consistent, Higher = more creative
-• Recommended: 0.7-0.8 (quality), 1.4+ (creative)
+• Recommended: 0.6-0.7 (quality), 1.3+ (creative)
 
 🎲 ENABLE SAMPLING
 • Unchecked = deterministic (same input = same output)
@@ -285,19 +285,19 @@ def run_gui_nllb():
 • Controls diversity of token selection during sampling
 • Lower values = more focused, Higher = more diverse
 • Only active when sampling is enabled
-• Quality: 40, Creative: 60, Speed: 50 (default)
+• Quality: 35, Creative: 55, Speed: 50 (default)
 
 🎪 TOP-P NUCLEUS SAMPLING (0.1-1.0)
 • Controls probability mass for token selection
 • Lower = more conservative, Higher = more permissive
 • Works with Top-K to fine-tune sampling behavior
-• Quality: 0.85, Creative: 0.95, Speed: 0.9 (default)
+• Quality: 0.80, Creative: 0.92, Speed: 0.9 (default)
 
 📦 BATCH SIZE (1-32)
 • Number of lines processed together
 • Higher = faster but uses more memory
-• Lower if you get out-of-memory errors
-• Quality: 6, Speed: 20, Creative: 10
+• Lower = better context awareness for continuations
+• Quality: 4, Speed: 20, Creative: 8
 
 📝 GRAMMAR CORRECTION
 • Applies additional LanguageTool grammar checking
@@ -306,14 +306,18 @@ def run_gui_nllb():
 • Especially effective for Polish verb/noun agreement
 
 🎯 ENHANCED PRESETS:
-• Quality: 8 beams, aggressive post-processing, Polish-aware corrections
+• Quality: 10 beams, enhanced context awareness, Polish-optimized
+  - Better handling of sentence continuations (And, Or, But, etc.)
+  - Smaller batches for superior context preservation
+  - More focused sampling for consistent high-quality output
 • Speed: 1 beam, minimal processing, large batches for performance  
-• Creative: 4 beams, sampling enabled, diverse output generation
+• Creative: 5 beams, balanced sampling, natural conversational flow
+  - Improved parameters for more coherent creative output
 
 💡 POLISH LANGUAGE TIPS:
 • Quality preset includes enhanced Polish conjugation checking
 • Grammar correction handles verb/noun/adjective agreement
-• Longer sentences benefit from higher length penalties
+• Improved grouping for sentences starting with conjunctions
 • Use Creative preset for more natural, conversational Polish
         """
         

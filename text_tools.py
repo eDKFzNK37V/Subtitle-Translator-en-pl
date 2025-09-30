@@ -204,25 +204,44 @@ def group_dialogue_lines(lines: List[str]) -> Tuple[List[str], List[List[int]]]:
     
     def should_continue_group(prev_line: str, curr_line: str) -> bool:
         """
-        Optimized determination if current line should continue the previous group.
+        Enhanced determination if current line should continue the previous group.
+        Improved to handle conjunction starts and better context awareness.
         """
         if not curr_line.strip():
             return False
         
-        curr_lower = curr_line.lower()
+        curr_lower = curr_line.lower().strip()
         prev_ends_with_punct = prev_line.rstrip()[-1:] in '.!?:'
         
-        # Check for common continuation patterns first (most frequent)
-        if curr_lower.startswith(('and ', 'but ', 'or ', 'so ', 'then ')):
-            return not prev_ends_with_punct
+        # Enhanced continuation patterns - conjunctions at start indicate continuation
+        # These words typically continue the thought from the previous line
+        continuation_words = (
+            'and ', 'but ', 'or ', 'so ', 'then ', 'yet ', 'nor ',
+            'for ', 'because ', 'since ', 'unless ', 'until ', 'while ',
+            'though ', 'although ', 'if ', 'when ', 'where ', 'after ',
+            'before ', 'as ', 'once ', 'whenever ', 'wherever '
+        )
+        
+        # If line starts with a conjunction, it's likely a continuation
+        # Only skip grouping if previous line ends with strong punctuation
+        if curr_lower.startswith(continuation_words):
+            # Still group even if previous ends with comma or no punctuation
+            if prev_line.rstrip()[-1:] in '.,;:':
+                return True  # Definitely continue
+            return not prev_ends_with_punct  # Don't continue after .!?:
         
         # Check for lowercase start (original logic)
         if curr_line[0].islower():
             return not prev_ends_with_punct
         
-        # Quick idiom check (simplified)
+        # Enhanced idiom check
         combined = (prev_line + " " + curr_line).lower()
-        if any(phrase in combined for phrase in ['in order to', 'as well as', 'not only', 'but also']):
+        common_phrases = [
+            'in order to', 'as well as', 'not only', 'but also',
+            'in addition to', 'along with', 'together with',
+            'as long as', 'as soon as', 'such as'
+        ]
+        if any(phrase in combined for phrase in common_phrases):
             return True
                 
         return False
