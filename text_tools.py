@@ -533,7 +533,7 @@ def extract_tags_with_placeholders(text: str) -> Tuple[str, List[Tuple[str, str,
         return placeholder
 
     # Use re.sub to directly replace tags/escapes with placeholders, preserving all other text
-    clean_text = TAG_ONLY.sub(repl, text)
+    clean_text = TAG_OR_ESCAPE.sub(repl, text)
     return clean_text, ph_map
 
 def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str, int]]) -> str:
@@ -554,22 +554,6 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
         if placeholder in out:
             out = out.replace(placeholder, original)
 
-    # Second pass: insert any missing tags at their approximate original positions
-    # Sort by original position so earlier inserts don't break later positions too badly
-
-    # Normalize tags for robust duplicate prevention
-    def normalize_tag(tag):
-        # Remove all whitespace inside tag and lowercase
-        return re.sub(r"\\s+", "", tag).lower()
-
-    # Extract all tags from translated text
-    present_tags = set()
-    for m in re.finditer(r"{\\[^}]+}", translated):
-        present_tags.add(normalize_tag(m.group(0)))
-
-    missing = []
-    for (p, o, pos) in ph_map:
-        if p not in translated and normalize_tag(o) not in present_tags:
             missing.append((p, o, pos))
     missing.sort(key=lambda x: x[2])
 
@@ -638,6 +622,8 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
         insert_at = find_optimal_insertion_point(out, pos, original_total_len)
         out = insert_tag_with_smart_spacing(out, insert_at, original)
 
+    # Remove any leftover placeholders like <TAGPH_0>, < TAGPH_0>, etc.
+    out = re.sub(r'<\s*TAGPH_\d+\s*>?', '', out)  # Remove all <TAGPH_n> variants with optional spaces and optional closing '>'
     return out
 
 
@@ -759,7 +745,6 @@ def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
     """
     if not text.strip():
         return text
-    
     # Just apply the minimal style adjustment
     return adjust_subtitle_style_tone(text, target_lang)
 
