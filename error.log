@@ -1,0 +1,112 @@
+ERROR:root:[do_post] Warm-up batch failed: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 711, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 1-9: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 9-17: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 17-25: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 25-33: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 33-41: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 41-49: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 49-57: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 57-65: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 65-73: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 73-81: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 81-89: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 89-97: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+ERROR:root:[do_post] Error in batch 97-100: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 728, in do_post
+    cb = correct_text_batch_nllb(
+         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Subtitle-Translator-en-pl\subtitle_workflow.py", line 248, in correct_text_batch_nllb
+    from pipeline import correct_text_batch
+ImportError: cannot import name 'correct_text_batch' from 'pipeline' (E:\Subtitle-Translator-en-pl\pipeline.py)
