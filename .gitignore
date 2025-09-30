@@ -25,3 +25,4 @@ error.log
 correction_log*.txt
 test_*.srt
 test_*.ass
+function_analysis_report.txt

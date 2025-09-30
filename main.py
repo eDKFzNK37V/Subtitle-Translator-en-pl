@@ -2,7 +2,7 @@
 import argparse
 import os
 import time
-from logs import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error, SubtitleLogger
+from logs import on_cli_start, on_cli_finish, on_cli_error, SubtitleLogger
 
 
 def print_usage():

@@ -56,8 +56,8 @@ FILE: function_analyzer.py
   • main() [Line 302]
     Doc: Main function to run the analysis.
     Called in 2 place(s):
-      - main.py:241 → main()
       - function_analyzer.py:323 → main()
+      - main.py:241 → main()
 
 FILE: gui.py
 --------------------------------------------------
@@ -250,17 +250,17 @@ FILE: main.py
       - logs.py:90 → callback(event_data)
   • main() [Line 60]
     Called in 2 place(s):
-      - main.py:241 → main()
       - function_analyzer.py:323 → main()
+      - main.py:241 → main()
 
 FILE: models.py
 --------------------------------------------------
   • get_nllb_globals() [Line 46]
     Doc: Return the pre-loaded global NLLB model instances for efficiency.
     Called in 3 place(s):
-      - subtitle_workflow.py:25 → TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
       - gui_nllb.py:11 → model, tokenizer, device = get_nllb_globals()
       - main.py:119 → model, tokenizer, device = get_nllb_globals()
+      - subtitle_workflow.py:25 → TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
 
 FILE: pipeline.py
 --------------------------------------------------
@@ -317,11 +317,11 @@ FILE: progress_controller.py
       - gui_nllb.py:859 → threading.Thread(target=run_and_reset, daemon=True).start()
       - gui_nllb.py:421 → threading.Thread(target=check_lines, daemon=True).start()
       - gui_nllb.py:507 → threading.Thread(target=check_lines, daemon=True).start()
+      - pipeline.py:37 → t.start()
       - text_tools.py:392 → insertion_points.append((match.start(), 'conjunction', 2))
       - text_tools.py:400 → words = [(m.start(), m.end()) for m in re.finditer(r'\S+', text)]
       - text_tools.py:458 → ph_map.append((placeholder, m.group(0), m.start()))
       - text_tools.py:515 → words = [(m.group(), m.start(), m.end()) for m in re.finditer(r'\S+', text)]
-      - pipeline.py:37 → t.start()
   • set_post_total(self, post_total) [Line 39] (in class ProgressController)
     Doc: Update the actual post-processing total, replacing the initial estimate.
     Called in 1 place(s):
@@ -464,10 +464,10 @@ FILE: text_tools.py
     Doc: Groups consecutive lines for translation if the next line starts with a lowercase letter.
     Enhanc...
     Called in 4 place(s):
-      - subtitle_workflow.py:195 → grouped_lines, group_map = group_dialogue_lines(lines)
-      - subtitle_workflow.py:275 → grouped_lines, group_map = group_dialogue_lines(lines)
       - gui_nllb.py:618 → grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
       - main.py:140 → grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
+      - subtitle_workflow.py:195 → grouped_lines, group_map = group_dialogue_lines(lines)
+      - subtitle_workflow.py:275 → grouped_lines, group_map = group_dialogue_lines(lines)
   • should_continue_group(prev_line, curr_line) [Line 205]
     Doc: Optimized determination if current line should continue the previous group.
     Called in 1 place(s):
@@ -480,10 +480,10 @@ FILE: text_tools.py
     Doc: Splits translated grouped lines back into the original number of lines.
     Each group is split into...
     Called in 4 place(s):
-      - subtitle_workflow.py:229 → split_lines = split_grouped_translations(restored_groups, group_map)
-      - subtitle_workflow.py:315 → corrected_lines = split_grouped_translations(grouped_corrected, group_map)
       - gui_nllb.py:661 → translated = split_grouped_translations(translated_groups, group_map)
       - main.py:164 → translated = split_grouped_translations(translated_groups, group_map)
+      - subtitle_workflow.py:229 → split_lines = split_grouped_translations(restored_groups, group_map)
+      - subtitle_workflow.py:315 → corrected_lines = split_grouped_translations(grouped_corrected, group_map)
   • extract_newline_tags(text) [Line 308]
     Doc: Remove all \N (and variants) from text, return cleaned text and count of tags.
     Called in 2 place(s):
@@ -505,29 +505,29 @@ FILE: text_tools.py
     Enhanced with protec...
     Called in 3 place(s):
       - gui_nllb.py:788 → final_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=
-      - text_tools.py:330 → return insert_newline_tags_contextaware(text, n_tags, prefer_punctuation=True)
       - main.py:198 → final_lines.append(insert_newline_tags_contextaware(line, n_count, prefer_punctu
+      - text_tools.py:330 → return insert_newline_tags_contextaware(text, n_tags, prefer_punctuation=True)
   • extract_tags_with_placeholders(text) [Line 446]
     Doc: Replace all tags/escapes with unique placeholders and return:
       clean_text, ph_map
     ph_map: l...
     Called in 4 place(s):
-      - subtitle_workflow.py:201 → clean, ph_map = extract_tags_with_placeholders(group)
-      - subtitle_workflow.py:186 → clean, ph_map = extract_tags_with_placeholders(line)
       - gui_nllb.py:627 → placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in cleaned_
       - main.py:137 → placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in cleaned_
+      - subtitle_workflow.py:201 → clean, ph_map = extract_tags_with_placeholders(group)
+      - subtitle_workflow.py:186 → clean, ph_map = extract_tags_with_placeholders(line)
   • repl(m) [Line 455]
     ⚠️  NOT CALLED ANYWHERE (potential unused function)
   • restore_tags_from_placeholders(translated, ph_map) [Line 466]
     Doc: Replace placeholders in translated text with original tags/escapes.
     If a placeholder is missing ...
     Called in 6 place(s):
-      - subtitle_workflow.py:226 → restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_m
-      - subtitle_workflow.py:188 → out.append(restore_tags_from_placeholders(clean, ph_map))
       - gui_nllb.py:465 → restore_tags_from_placeholders(edited[i], placeholder_maps[i])
       - gui_nllb.py:557 → restore_tags_from_placeholders(edited[i], placeholder_maps[i])
       - gui_nllb.py:762 → restore_tags_from_placeholders(corrected_all[i], placeholder_maps[i])
       - main.py:187 → restore_tags_from_placeholders(corrected_all[i], placeholder_maps[i])
+      - subtitle_workflow.py:226 → restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_m
+      - subtitle_workflow.py:188 → out.append(restore_tags_from_placeholders(clean, ph_map))
   • normalize_tag(tag) [Line 488]
     Called in 2 place(s):
       - text_tools.py:495 → present_tags.add(normalize_tag(m.group(0)))
@@ -544,8 +544,8 @@ FILE: text_tools.py
     Doc: Minimal subtitle style adjustment - only essential, safe changes.
     Prevents over-correction that ...
     Called in 2 place(s):
-      - subtitle_workflow.py:298 → corrected_group = adjust_subtitle_style_tone(corrected_group, tgt_lang)
       - gui_nllb.py:771 → adjusted = adjust_subtitle_style_tone(line, tgt_lang.get())
+      - subtitle_workflow.py:298 → corrected_group = adjust_subtitle_style_tone(corrected_group, tgt_lang)
 
 FILE: utils.py
 --------------------------------------------------
@@ -576,6 +576,7 @@ FILE: utils.py
 POTENTIALLY UNUSED FUNCTIONS
 ================================================================================
 These functions are defined but never called (excluding private and special methods):
+  • handle_exception in gui.py:9
   • validate_beams in gui_nllb.py:112
   • validate_penalty_temp in gui_nllb.py:119
   • validate_batch_size in gui_nllb.py:126
@@ -594,11 +595,10 @@ These functions are defined but never called (excluding private and special meth
   • final_update_and_stop in gui_nllb.py:750
   • insert_result in gui_nllb.py:411
   • insert_result in gui_nllb.py:499
+  • run in pipeline.py:31
   • update_translation_progress in progress_controller.py:88
   • show_post_start in progress_controller.py:169
   • repl in text_tools.py:455
-  • handle_exception in gui.py:9
-  • run in pipeline.py:31
 
 ================================================================================
 FUNCTIONS CALLED BUT NOT DEFINED LOCALLY
@@ -726,9 +726,9 @@ These are likely imported functions, built-ins, or external library calls:
   • abspath (called 1 time(s))
     - function_analyzer.py:305
   • add (called 4 time(s))
-    - text_tools.py:495
     - function_analyzer.py:167
     - function_analyzer.py:170
+    - function_analyzer.py:172
     ... and 1 more
   • add_argument (called 11 time(s))
     - main.py:63
@@ -741,21 +741,21 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:705
     ... and 10 more
   • any (called 5 time(s))
-    - text_tools.py:225
     - resources.py:183
     - resources.py:188
+    - resources.py:193
     ... and 2 more
   • append (called 76 time(s))
-    - utils.py:32
-    - utils.py:33
-    - utils.py:41
+    - function_analyzer.py:197
+    - function_analyzer.py:198
+    - function_analyzer.py:199
     ... and 73 more
   • askopenfilename (called 1 time(s))
     - gui_nllb.py:366
   • basename (called 6 time(s))
-    - logs.py:121
-    - logs.py:123
     - function_analyzer.py:218
+    - function_analyzer.py:268
+    - function_analyzer.py:288
     ... and 3 more
   • basicConfig (called 1 time(s))
     - gui.py:6
@@ -770,9 +770,9 @@ These are likely imported functions, built-ins, or external library calls:
   • capitalize (called 1 time(s))
     - main.py:46
   • check (called 5 time(s))
-    - subtitle_workflow.py:286
-    - subtitle_workflow.py:292
     - gui_nllb.py:410
+    - gui_nllb.py:498
+    - pipeline.py:33
     ... and 2 more
   • compile (called 3 time(s))
     - text_tools.py:187
@@ -813,8 +813,8 @@ These are likely imported functions, built-ins, or external library calls:
   • detect (called 1 time(s))
     - utils.py:14
   • dirname (called 2 time(s))
-    - logs.py:98
     - function_analyzer.py:305
+    - logs.py:98
   • divmod (called 1 time(s))
     - progress_controller.py:83
   • empty_cache (called 1 time(s))
@@ -827,19 +827,19 @@ These are likely imported functions, built-ins, or external library calls:
     - text_tools.py:515
     ... and 1 more
   • enumerate (called 14 time(s))
-    - utils.py:30
-    - utils.py:60
-    - utils.py:78
+    - gui_nllb.py:409
+    - gui_nllb.py:497
+    - gui_nllb.py:777
     ... and 11 more
   • error (called 1 time(s))
     - gui.py:18
   • escape (called 2 time(s))
-    - resources.py:218
     - pipeline.py:57
+    - resources.py:218
   • eval (called 4 time(s))
-    - subtitle_workflow.py:26
     - models.py:11
     - models.py:44
+    - models.py:27
     ... and 1 more
   • exception (called 8 time(s))
     - gui_nllb.py:668
@@ -847,14 +847,14 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:564
     ... and 5 more
   • exists (called 5 time(s))
-    - utils.py:68
     - logs.py:262
     - logs.py:267
+    - main.py:92
     ... and 2 more
   • extend (called 6 time(s))
-    - subtitle_workflow.py:220
-    - subtitle_workflow.py:139
     - gui_nllb.py:745
+    - gui_nllb.py:716
+    - gui_nllb.py:733
     ... and 3 more
   • filterwarnings (called 1 time(s))
     - config.py:3
@@ -869,9 +869,9 @@ These are likely imported functions, built-ins, or external library calls:
     - text_tools.py:494
     ... and 3 more
   • float (called 6 time(s))
+    - gui_nllb.py:121
     - subtitle_workflow.py:59
     - subtitle_workflow.py:60
-    - subtitle_workflow.py:63
     ... and 3 more
   • format_exception (called 1 time(s))
     - gui.py:13
@@ -889,9 +889,9 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:426
     ... and 3 more
   • get (called 67 time(s))
-    - subtitle_workflow.py:19
-    - subtitle_workflow.py:36
     - gui_nllb.py:365
+    - gui_nllb.py:578
+    - gui_nllb.py:591
     ... and 64 more
   • getattr (called 1 time(s))
     - function_analyzer.py:138
@@ -913,18 +913,18 @@ These are likely imported functions, built-ins, or external library calls:
     - text_tools.py:458
     ... and 2 more
   • hasattr (called 3 time(s))
+    - function_analyzer.py:132
     - gui_nllb.py:816
     - main.py:214
-    - function_analyzer.py:132
   • insert (called 10 time(s))
     - gui_nllb.py:321
     - gui_nllb.py:382
     - gui_nllb.py:457
     ... and 7 more
   • int (called 17 time(s))
-    - subtitle_workflow.py:58
-    - subtitle_workflow.py:61
-    - subtitle_workflow.py:62
+    - gui_nllb.py:114
+    - gui_nllb.py:128
+    - progress_controller.py:43
     ... and 14 more
   • is_alive (called 1 time(s))
     - pipeline.py:39
@@ -955,43 +955,43 @@ These are likely imported functions, built-ins, or external library calls:
   • isupper (called 1 time(s))
     - text_tools.py:137
   • items (called 13 time(s))
-    - logs.py:218
-    - logs.py:334
-    - logs.py:346
+    - function_analyzer.py:180
+    - function_analyzer.py:216
+    - function_analyzer.py:273
     ... and 10 more
   • join (called 10 time(s))
-    - logs.py:261
-    - logs.py:266
-    - text_tools.py:348
+    - function_analyzer.py:314
+    - function_analyzer.py:293
+    - function_analyzer.py:237
     ... and 7 more
   • keys (called 2 time(s))
     - function_analyzer.py:228
     - function_analyzer.py:283
   • len (called 117 time(s))
-    - utils.py:61
-    - utils.py:70
-    - utils.py:76
+    - function_analyzer.py:205
+    - function_analyzer.py:206
+    - function_analyzer.py:203
     ... and 114 more
   • list (called 1 time(s))
     - function_analyzer.py:49
   • load (called 1 time(s))
     - utils.py:28
   • lower (called 18 time(s))
-    - utils.py:25
-    - utils.py:57
+    - gui_nllb.py:682
+    - resources.py:179
     - subtitle_workflow.py:183
     ... and 15 more
   • mainloop (called 1 time(s))
     - gui_nllb.py:897
   • max (called 24 time(s))
-    - utils.py:70
-    - utils.py:76
-    - utils.py:77
+    - progress_controller.py:43
+    - progress_controller.py:103
+    - progress_controller.py:104
     ... and 21 more
   • min (called 18 time(s))
-    - subtitle_workflow.py:58
-    - subtitle_workflow.py:59
-    - subtitle_workflow.py:60
+    - gui_nllb.py:443
+    - gui_nllb.py:535
+    - gui_nllb.py:707
     ... and 15 more
   • no_grad (called 2 time(s))
     - subtitle_workflow.py:79
@@ -1002,9 +1002,9 @@ These are likely imported functions, built-ins, or external library calls:
     - logs.py:278
     ... and 2 more
   • open (called 9 time(s))
-    - utils.py:12
-    - utils.py:38
-    - utils.py:81
+    - function_analyzer.py:63
+    - function_analyzer.py:298
+    - gui_nllb.py:379
     ... and 6 more
   • pack (called 28 time(s))
     - gui_nllb.py:230
@@ -1016,9 +1016,9 @@ These are likely imported functions, built-ins, or external library calls:
   • parse_args (called 1 time(s))
     - main.py:74
   • print (called 41 time(s))
-    - logs.py:121
-    - logs.py:135
-    - logs.py:136
+    - function_analyzer.py:307
+    - function_analyzer.py:308
+    - function_analyzer.py:317
     ... and 38 more
   • progress_callback (called 1 time(s))
     - subtitle_workflow.py:142
@@ -1026,14 +1026,14 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:427
     - gui_nllb.py:513
   • range (called 18 time(s))
-    - utils.py:71
-    - utils.py:77
-    - subtitle_workflow.py:213
+    - gui_nllb.py:444
+    - gui_nllb.py:536
+    - gui_nllb.py:724
     ... and 15 more
   • read (called 3 time(s))
-    - utils.py:13
-    - gui_nllb.py:380
     - function_analyzer.py:64
+    - gui_nllb.py:380
+    - utils.py:13
   • register (called 3 time(s))
     - gui_nllb.py:134
     - gui_nllb.py:135
@@ -1045,21 +1045,21 @@ These are likely imported functions, built-ins, or external library calls:
   • rsplit (called 1 time(s))
     - main.py:99
   • rstrip (called 5 time(s))
-    - utils.py:74
-    - utils.py:41
     - gui_nllb.py:450
+    - text_tools.py:213
+    - text_tools.py:234
     ... and 2 more
   • save (called 1 time(s))
     - utils.py:63
   • set (called 46 time(s))
+    - function_analyzer.py:162
     - gui_nllb.py:240
     - gui_nllb.py:241
-    - gui_nllb.py:242
     ... and 43 more
   • showerror (called 8 time(s))
+    - gui.py:19
     - gui_nllb.py:891
     - gui_nllb.py:584
-    - gui_nllb.py:587
     ... and 5 more
   • showinfo (called 3 time(s))
     - gui_nllb.py:877
@@ -1069,14 +1069,14 @@ These are likely imported functions, built-ins, or external library calls:
     - text_tools.py:408
     - text_tools.py:501
   • sorted (called 6 time(s))
-    - logs.py:308
-    - logs.py:334
-    - logs.py:346
+    - function_analyzer.py:228
+    - function_analyzer.py:233
+    - function_analyzer.py:283
     ... and 3 more
   • split (called 4 time(s))
-    - utils.py:25
-    - utils.py:57
     - text_tools.py:294
+    - text_tools.py:297
+    - utils.py:25
     ... and 1 more
   • splitext (called 2 time(s))
     - gui_nllb.py:663
@@ -1084,31 +1084,31 @@ These are likely imported functions, built-ins, or external library calls:
   • splitlines (called 1 time(s))
     - function_analyzer.py:76
   • startswith (called 3 time(s))
-    - text_tools.py:216
     - function_analyzer.py:182
     - function_analyzer.py:184
+    - text_tools.py:216
   • str (called 9 time(s))
-    - gui_nllb.py:891
-    - main.py:231
-    - main.py:234
+    - function_analyzer.py:73
+    - function_analyzer.py:76
+    - function_analyzer.py:79
     ... and 6 more
   • strftime (called 2 time(s))
     - logs.py:173
     - logs.py:278
   • strip (called 25 time(s))
-    - utils.py:31
-    - utils.py:62
-    - utils.py:40
+    - function_analyzer.py:108
+    - function_analyzer.py:133
+    - gui_nllb.py:457
     ... and 22 more
   • sub (called 37 time(s))
-    - subtitle_workflow.py:338
-    - subtitle_workflow.py:339
-    - subtitle_workflow.py:377
+    - pipeline.py:57
+    - polish_morphology.py:117
+    - polish_morphology.py:120
     ... and 34 more
   • sum (called 6 time(s))
-    - text_tools.py:76
-    - text_tools.py:119
     - function_analyzer.py:203
+    - function_analyzer.py:204
+    - function_analyzer.py:319
     ... and 3 more
   • tag_config (called 6 time(s))
     - gui_nllb.py:403
@@ -1117,8 +1117,8 @@ These are likely imported functions, built-ins, or external library calls:
     ... and 3 more
   • time (called 6 time(s))
     - gui_nllb.py:872
-    - progress_controller.py:31
-    - progress_controller.py:80
+    - main.py:96
+    - main.py:223
     ... and 3 more
   • title (called 7 time(s))
     - gui_nllb.py:19
@@ -1126,9 +1126,9 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:377
     ... and 4 more
   • to (called 6 time(s))
-    - subtitle_workflow.py:71
-    - text_tools.py:19
     - models.py:8
+    - models.py:43
+    - models.py:19
     ... and 3 more
   • tok (called 1 time(s))
     - subtitle_workflow.py:71
@@ -1145,14 +1145,14 @@ These are likely imported functions, built-ins, or external library calls:
     - progress_controller.py:96
     ... and 5 more
   • upper (called 4 time(s))
-    - subtitle_workflow.py:343
-    - subtitle_workflow.py:348
     - gui_nllb.py:367
+    - logs.py:216
+    - subtitle_workflow.py:343
     ... and 1 more
   • values (called 7 time(s))
-    - text_tools.py:76
-    - text_tools.py:119
-    - models.py:26
+    - function_analyzer.py:203
+    - function_analyzer.py:204
+    - function_analyzer.py:319
     ... and 4 more
   • walk (called 4 time(s))
     - function_analyzer.py:83
@@ -1167,12 +1167,12 @@ These are likely imported functions, built-ins, or external library calls:
   • winfo_exists (called 1 time(s))
     - gui_nllb.py:412
   • write (called 47 time(s))
-    - utils.py:83
+    - function_analyzer.py:299
     - logs.py:206
     - logs.py:207
     ... and 44 more
   • zip (called 6 time(s))
-    - subtitle_workflow.py:226
     - gui_nllb.py:777
     - gui_nllb.py:806
+    - main.py:194
     ... and 3 more
