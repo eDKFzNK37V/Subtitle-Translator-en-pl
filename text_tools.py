@@ -573,9 +573,7 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
         out = insert_tag_with_smart_spacing(out, insert_at, original)
 
     # Remove any leftover placeholders like <TAGPH_0>, < TAGPH_0>, etc.
-    out = re.sub(r'<\s*TAGPH_\d+\s*>', '', out)  # Remove <TAGPH_n> and < TAGPH_n>
-    out = re.sub(r'<\s*TAGPH_\d+>', '', out)      # Remove < TAGPH_n> without closing '>'
-    out = re.sub(r'<\s*TAGPH_\d+\s*>', '', out)  # Remove any remaining variants
+    out = re.sub(r'<\s*TAGPH_\d+\s*>?', '', out)  # Remove all <TAGPH_n> variants with optional spaces and optional closing '>'
     return out
 
 
