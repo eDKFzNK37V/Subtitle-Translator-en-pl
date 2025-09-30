@@ -498,7 +498,6 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
             out = out.replace(placeholder, original)
 
 
-    # Second pass: insert any missing tags at their approximate original positions
     # Only insert if the original tag is not already present in the string
     missing = []
     for (p, o, pos) in ph_map:
