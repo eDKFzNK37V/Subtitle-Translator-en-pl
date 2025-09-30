@@ -65,13 +65,6 @@ class CLICallbackManager:
             'events': []
         }
         self.logger: Optional['SubtitleLogger'] = None
-        
-    def register_callback(self, event_type: str, callback: Callable[[CLIEventData], None]):
-        """Register a callback for a specific event type."""
-        if event_type in self.callbacks:
-            self.callbacks[event_type].append(callback)
-        else:
-            raise ValueError(f"Unknown event type: {event_type}")
     
     def _dispatch_event(self, event_data: CLIEventData):
         """Dispatch event to all registered callbacks and log the event."""
@@ -128,24 +121,6 @@ class CLICallbackManager:
         print(f"Starting translation: {os.path.basename(input_file)} ({src_lang} → {tgt_lang})")
         if output_file:
             print(f"Output will be saved to: {os.path.basename(output_file)}")
-    
-    def on_progress(self, current: int, total: int, stage: str = "processing"):
-        """Called during translation progress."""
-        event_data = CLIEventData(
-            event_type='progress',
-            progress=(current, total),
-            status=f"{stage}: {current}/{total}"
-        )
-        self._dispatch_event(event_data)
-
-        # Console progress update with padding to clear previous output
-        percentage = (current / total) * 100 if total > 0 else 0
-        progress_str = f"{stage.capitalize()}: {current}/{total} ({percentage:.1f}%)"
-        # Pad with spaces to clear any leftover characters from previous longer lines
-        print(f"\r{progress_str.ljust(40)}", end='', flush=True)
-
-        if current >= total:
-            print()  # New line when complete
     
     def on_finish(self, output_file: str, total_lines: int, duration: Optional[float] = None):
         """Called when CLI translation finishes successfully."""
@@ -308,153 +283,6 @@ def initialize_session_log(output_dir=None):
         _session_log_data['problematic_changes'] = []
 
 
-def is_likely_unknown_word(word: str) -> bool:
-    """Check if a word is likely unknown/foreign and should be logged."""
-    # Skip very short words or non-alphabetic words
-    if len(word) < 4 or not word.isalpha():  # Increased minimum length to 4
-        return False
-        
-    # Extended list of common English words to exclude
-    common_english = {
-        'the', 'and', 'but', 'for', 'you', 'are', 'its', 'it\'s', 'don\'t', 'can\'t', 'won\'t',
-        'hello', 'hi', 'yes', 'no', 'this', 'that', 'with', 'have', 'will', 'would', 'could',
-        'should', 'there', 'here', 'where', 'when', 'what', 'why', 'how', 'who', 'which',
-        'time', 'good', 'bad', 'big', 'small', 'new', 'old', 'first', 'last', 'long', 'short',
-        'right', 'left', 'high', 'low', 'hot', 'cold', 'know', 'think', 'make', 'take', 'come',
-        'give', 'look', 'use', 'find', 'tell', 'ask', 'work', 'seem', 'feel', 'try', 'leave',
-        'want', 'need', 'get', 'going', 'said', 'like', 'just', 'really', 'actually', 'maybe',
-        'something', 'nothing', 'everything', 'anything', 'someone', 'everyone', 'anyone',
-        'about', 'after', 'before', 'during', 'while', 'until', 'since', 'from', 'into', 'onto',
-        'off', 'out', 'over', 'under', 'through', 'around', 'between', 'among', 'against', 'along',
-        'sword', 'skill', 'power', 'magic', 'weapon', 'shield', 'armor', 'battle', 'fight',
-        'attack', 'defend', 'player', 'great', 'strong', 'weak', 'help', 'visit', 'today',
-        'uses', 'powerful', 'funny', 'everyone', 'blue', 'red', 'green', 'white', 'black',
-        # Additional common words to reduce false positives
-        'been', 'being', 'done', 'doing', 'made', 'making', 'used', 'using', 'seen', 'seeing',
-        'heard', 'hearing', 'called', 'calling', 'told', 'telling', 'went', 'going', 'came',
-        'coming', 'left', 'leaving', 'right', 'wrong', 'true', 'false', 'real', 'fake', 'nice',
-        'mean', 'kind', 'cruel', 'happy', 'sad', 'angry', 'calm', 'quiet', 'loud', 'fast', 'slow'
-    }
-    
-    if word.lower() in common_english:
-        return False
-        
-    # Extended list of common Polish words to exclude  
-    common_polish = {
-        'będę', 'dziś', 'jest', 'mam', 'czy', 'ale', 'tak', 'nie', 'co', 'jak', 'gdzie', 
-        'kiedy', 'dlaczego', 'który', 'która', 'które', 'tego', 'tej', 'tym', 'tych',
-        'jego', 'jej', 'ich', 'nasz', 'nasza', 'nasze', 'wasz', 'wasza', 'wasze',
-        'bardzo', 'dobrze', 'źle', 'może', 'tylko', 'już', 'jeszcze', 'także',
-        'też', 'również', 'jednak', 'więc', 'przez', 'przed', 'po', 'podczas', 'bez',
-        'ciągle', 'zawsze', 'nigdy', 'czasami', 'często', 'rzadko', 'wcześnie', 'późno',
-        'tutaj', 'tam', 'wszędzie', 'nigdzie', 'gdzieś', 'daleko', 'blisko', 'obok',
-        'chce', 'chcę', 'chcesz', 'chcemy', 'chcecie', 'chcą', 'może', 'musi', 'musisz'
-    }
-    
-    if word.lower() in common_polish:
-        return False
-    
-    # Game/Anime character names and terms that should be flagged for review
-    known_names = {
-        'kirito', 'asuna', 'argo', 'lind', 'kibaou', 'diabel', 'aincrad', 'karluin',
-        'klein', 'silica', 'leafa', 'sinon', 'yui', 'lizbeth', 'agil', 'heathcliff',
-        'aincrad', 'alfheim', 'ggo', 'underworld', 'sao', 'alo', 'sword', 'online',
-        'gleam', 'eyes', 'excalibur', 'elucidator', 'blue', 'rose', 'beater'
-    }
-    
-    if word.lower() in known_names:
-        return True
-        
-    # Consider words with non-standard patterns as potentially unknown
-    unusual_patterns = [
-        r'^[A-Z]{3,}$',  # All caps words (acronyms, etc.)
-        r'^[A-Z][a-z]*[A-Z]',  # CamelCase  
-        r'[xzqj]{2,}',  # Unusual letter combinations
-        r'[0-9]',  # Words containing numbers
-    ]
-    
-    for pattern in unusual_patterns:
-        if re.search(pattern, word):
-            return True
-    
-    # Check for Polish diacritics - these are important
-    polish_chars = 'ąćęłńóśźż'
-    if any(char in word.lower() for char in polish_chars):
-        return True
-            
-    # Consider capitalized words that are likely proper names (Japanese names, foreign names)
-    # Exclude common English capitalized words
-    excluded_caps = {
-        'Hello', 'Good', 'Yes', 'No', 'Please', 'Thank', 'Thanks', 'Sorry', 'Okay', 'Ok',
-        'Maybe', 'Really', 'Sure', 'Fine', 'Great', 'Well', 'Right', 'Left', 'Up', 'Down',
-        'Boss', 'Floor', 'Squad', 'Team', 'Guild', 'Leader', 'Room', 'Raid', 'Attack',
-        'Game', 'Player', 'Level', 'Item', 'Skill', 'Magic', 'Sword', 'Shield', 'Armor',
-        'Health', 'Status', 'Menu', 'Settings', 'World', 'Area', 'Zone', 'Map', 'Quest'
-    }
-    
-    if word in excluded_caps:
-        return False
-        
-    # Names are typically capitalized and longer than 3 chars
-    if word[0].isupper() and len(word) > 3:
-        # Additional check: Japanese-style names or obviously foreign names
-        japanese_patterns = ['ki', 'to', 'na', 'su', 'ra', 'yu', 'ba', 'go', 'rin', 'ka', 'mi']
-        if any(pattern in word.lower() for pattern in japanese_patterns):
-            return True
-        # Or names that don't look like common English words
-        if not re.match(r'^[A-Z][a-z]+$', word):
-            return True
-        # Long capitalized words that might be names
-        if len(word) > 6:
-            return True
-            
-    return False
-
-
-def accumulate_correction_data(original_lines: list, corrected_lines: list) -> None:
-    """
-    Accumulate data about corrections for later logging.
-    Focus on unknown words (names, titles, etc.) that were translated from English.
-    """
-    global _session_log_data
-    
-    initialize_session_log()
-    
-    for i, (original, corrected) in enumerate(zip(original_lines, corrected_lines)):
-        if original == corrected:
-            continue
-            
-        # Detect potential names and unknown words
-        original_words = set(re.findall(r'\b\w+\b', original))
-        corrected_words = set(re.findall(r'\b\w+\b', corrected))
-        
-        # Check for lost words that might be names or unknown words
-        lost_words = original_words - corrected_words
-        for word in lost_words:
-            if is_likely_unknown_word(word):
-                _session_log_data['unknown_words'].add(word)
-                
-                # Track significant changes
-                _session_log_data['problematic_changes'].append({
-                    'original': original,
-                    'corrected': corrected,
-                    'lost_word': word
-                })
-        
-        # Also check for new words that appeared during correction (might be mistranslations)
-        # But only for English words that seem out of place in Polish text
-        new_words = corrected_words - original_words
-        for word in new_words:
-            # Only flag English words that appear in Polish translations (likely mistakes)
-            if (is_likely_unknown_word(word) and len(word) > 4 and 
-                not any(char in word.lower() for char in 'ąćęłńóśźż') and  # Not Polish word
-                word.lower() not in {'dziś', 'miecza', 'gracz', 'pomaga', 'wszystkim', 'potężna', 'używa', 'wspaniały', 'zabawny', 'jest'}):
-                # Only flag significant new words that might be incorrect
-                _session_log_data['problematic_changes'].append({
-                    'original': original,
-                    'corrected': corrected,
-                    'new_word': word
-                })
 
 
 def write_session_log() -> None:
@@ -534,14 +362,6 @@ def write_session_log() -> None:
         print(f"Session analysis logged to: {_session_log_data['log_file']}")
     except Exception as e:
         print(f"Warning: Could not write session log: {e}")
-
-
-# Keep the old function name for compatibility but redirect to new system
-def log_names_and_unknown_words(original_lines: list, corrected_lines: list, log_file: str = "correction_log.txt") -> None:
-    """
-    Compatibility wrapper - now accumulates data instead of immediately writing.
-    """
-    accumulate_correction_data(original_lines, corrected_lines)
 
 
 # Global callback manager instance

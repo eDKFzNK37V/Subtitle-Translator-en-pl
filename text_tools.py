@@ -3,37 +3,7 @@ import re
 import torch
 from config import DEVICE
 from models import PUNCT_MODELS, PUNCT_TOKENIZERS, GRAMMAR_MODEL, GRAMMAR_TOKENIZER
-from logs import accumulate_correction_data, log_names_and_unknown_words
 
-def correct_punctuation(text, model_choice="kredor"):
-    model = PUNCT_MODELS[model_choice]
-    tokenizer = PUNCT_TOKENIZERS[model_choice]
-    tokens = tokenizer(text, return_tensors="pt", truncation=True, padding=True).to(DEVICE)
-    with torch.no_grad():
-        logits = model(**tokens).logits
-        preds = torch.argmax(logits, dim=2)[0]
-    input_ids = tokens["input_ids"][0]
-    labels = model.config.id2label
-
-    corrected_words = []
-    current_word = ""
-    for token_id, pred_id in zip(input_ids, preds):
-        token = tokenizer.convert_ids_to_tokens(token_id.item())
-        label = labels[pred_id.item()]
-        if token in ["<s>", "</s>", "<pad>", "<unk>"]:
-            continue
-        if token.startswith("▁"):
-            if current_word:
-                corrected_words.append(current_word)
-            current_word = token[1:]
-        else:
-            current_word += token
-        if label != "O":
-            punct_map = {"LABEL_COMMA": ",", "LABEL_PERIOD": ".", "LABEL_QUESTION": "?"}
-            current_word += punct_map.get(label, "")
-    if current_word:
-        corrected_words.append(current_word)
-    return " ".join(corrected_words)
 
 def correct_grammar(text, num_beams=3, confidence_threshold=0.9):
     """
@@ -646,33 +616,6 @@ def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
     
     return adjusted.strip()
 
-
-
-
-
-def detect_and_improve_formality(text: str, target_lang: str = "pl") -> str:
-    """
-    Minimal formality improvement - only essential changes to prevent over-correction.
-    """
-    if not text.strip():
-        return text
-    
-    # Just apply the minimal style adjustment
-    return adjust_subtitle_style_tone(text, target_lang)
-
-def fix_common_translation_issues(text: str, target_lang: str = "pl") -> str:
-    """
-    Minimal fix for only the most essential translation issues.
-    Prevents over-correction by applying only safe, necessary changes.
-    """
-    if not text.strip():
-        return text
-    
-    # Only basic spacing and formatting fixes
-    fixed = re.sub(r'\s+([.!?])', r'\1', text, flags=re.IGNORECASE)  # space before punctuation
-    fixed = re.sub(r'\s{2,}', ' ', fixed, flags=re.IGNORECASE)  # multiple spaces
-    
-    return fixed.strip()
 
 
 

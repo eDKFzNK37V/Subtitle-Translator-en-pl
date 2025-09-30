@@ -4,10 +4,10 @@ Generated for troubleshooting purposes
 ================================================================================
 
 SUMMARY STATISTICS:
-Total function definitions: 153
-Unique function names: 140
-Total function calls: 1648
-Unique called function names: 264
+Total function definitions: 123
+Unique function names: 113
+Total function calls: 1401
+Unique called function names: 239
 
 ================================================================================
 ALL FUNCTIONS BY FILE
@@ -64,8 +64,7 @@ FILE: gui.py
   • handle_exception(exc_type, exc_value, exc_traceback) [Line 9]
     ⚠️  NOT CALLED ANYWHERE (potential unused function)
   • run_gui() [Line 29]
-    Called in 2 place(s):
-      - subtitle_workflow.py:12 → run_gui()
+    Called in 1 place(s):
       - main.py:85 → run_gui()
 
 FILE: gui_nllb.py
@@ -155,104 +154,71 @@ FILE: logs.py
   • to_dict(self) [Line 27] (in class CLIEventData)
     Doc: Convert event data to dictionary for logging.
     Called in 1 place(s):
-      - logs.py:79 → self.session_data['events'].append(event_data.to_dict())
+      - logs.py:72 → self.session_data['events'].append(event_data.to_dict())
   • __init__(self) [Line 49] (in class CLICallbackManager)
     ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • register_callback(self, event_type, callback) [Line 69] (in class CLICallbackManager)
-    Doc: Register a callback for a specific event type.
-    Called in 1 place(s):
-      - logs.py:591 → cli_callbacks.register_callback(event_type, callback)
-  • _dispatch_event(self, event_data) [Line 76] (in class CLICallbackManager)
+  • _dispatch_event(self, event_data) [Line 69] (in class CLICallbackManager)
     Doc: Dispatch event to all registered callbacks and log the event.
-    Called in 4 place(s):
-      - logs.py:125 → self._dispatch_event(event_data)
-      - logs.py:139 → self._dispatch_event(event_data)
-      - logs.py:159 → self._dispatch_event(event_data)
-      - logs.py:175 → self._dispatch_event(event_data)
-  • on_start(self, input_file, src_lang, tgt_lang, output_file) [Line 101] (in class CLICallbackManager)
+    Called in 3 place(s):
+      - logs.py:118 → self._dispatch_event(event_data)
+      - logs.py:134 → self._dispatch_event(event_data)
+      - logs.py:150 → self._dispatch_event(event_data)
+  • on_start(self, input_file, src_lang, tgt_lang, output_file) [Line 94] (in class CLICallbackManager)
     Doc: Called when CLI translation starts.
     Called in 1 place(s):
-      - logs.py:571 → cli_callbacks.on_start(input_file, src_lang, tgt_lang, output_file)
-  • on_progress(self, current, total, stage) [Line 132] (in class CLICallbackManager)
-    Doc: Called during translation progress.
-    Called in 1 place(s):
-      - logs.py:576 → cli_callbacks.on_progress(current, total, stage)
-  • on_finish(self, output_file, total_lines, duration) [Line 150] (in class CLICallbackManager)
+      - logs.py:374 → cli_callbacks.on_start(input_file, src_lang, tgt_lang, output_file)
+  • on_finish(self, output_file, total_lines, duration) [Line 125] (in class CLICallbackManager)
     Doc: Called when CLI translation finishes successfully.
     Called in 1 place(s):
-      - logs.py:581 → cli_callbacks.on_finish(output_file, total_lines, duration)
-  • on_error(self, error_msg, input_file) [Line 167] (in class CLICallbackManager)
+      - logs.py:379 → cli_callbacks.on_finish(output_file, total_lines, duration)
+  • on_error(self, error_msg, input_file) [Line 142] (in class CLICallbackManager)
     Doc: Called when CLI translation encounters an error.
     Called in 1 place(s):
-      - logs.py:586 → cli_callbacks.on_error(error_msg, input_file)
-  • get_session_summary(self) [Line 186] (in class CLICallbackManager)
-    Doc: Get summary of the current CLI session.
+      - logs.py:384 → cli_callbacks.on_error(error_msg, input_file)
+  • __init__(self, file_path, target_lang, idx_map) [Line 163] (in class SubtitleLogger)
     ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • __init__(self, file_path, target_lang, idx_map) [Line 205] (in class SubtitleLogger)
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • _make_log_path(self, file_path) [Line 213] (in class SubtitleLogger)
+  • _make_log_path(self, file_path) [Line 171] (in class SubtitleLogger)
     Called in 1 place(s):
-      - logs.py:211 → self.log_txt = self._make_log_path(file_path)
-  • log_entry(self, idx, original, translated, corrected, tags_before, tags_after) [Line 227] (in class SubtitleLogger)
+      - logs.py:169 → self.log_txt = self._make_log_path(file_path)
+  • log_entry(self, idx, original, translated, corrected, tags_before, tags_after) [Line 185] (in class SubtitleLogger)
     Doc: Record a single translation/correction entry.
         idx: index in the processed list (not the orig...
     Called in 2 place(s):
       - gui_nllb.py:808 → logger.log_entry(idx, orig, trans, final, tags_before=[], tags_after=[])
       - main.py:207 → logger.log_entry(idx, orig, trans, final, tags_before=[], tags_after=[])
-  • write_summary(self) [Line 242] (in class SubtitleLogger)
+  • write_summary(self) [Line 200] (in class SubtitleLogger)
     Doc: Write all logged entries to the log file in a human-readable format.
         Includes CLI events if ...
     Called in 2 place(s):
       - gui_nllb.py:812 → logger.write_summary()
       - main.py:213 → logger.write_summary()
-  • get_log_path(self) [Line 284] (in class SubtitleLogger)
+  • get_log_path(self) [Line 242] (in class SubtitleLogger)
     Called in 2 place(s):
       - gui_nllb.py:816 → log_path = logger.get_log_path() if hasattr(logger, "get_log_path") else logger.
       - main.py:214 → log_path = logger.get_log_path() if hasattr(logger, "get_log_path") else logger.
-  • get_next_correction_log_path(output_dir) [Line 297]
+  • get_next_correction_log_path(output_dir) [Line 255]
     Doc: Returns the next available correction log file path in the output directory.
     Pattern: correction...
     Called in 1 place(s):
-      - logs.py:318 → _session_log_data['log_file'] = get_next_correction_log_path(output_dir)
-  • initialize_session_log(output_dir) [Line 313]
+      - logs.py:276 → _session_log_data['log_file'] = get_next_correction_log_path(output_dir)
+  • initialize_session_log(output_dir) [Line 271]
     Doc: Initialize a single log file for the entire translation session in the output directory.
-    Called in 4 place(s):
-      - subtitle_workflow.py:392 → initialize_session_log(output_dir)
-      - logs.py:438 → initialize_session_log()
-      - logs.py:106 → initialize_session_log(output_dir)
-      - logs.py:108 → initialize_session_log()
-  • is_likely_unknown_word(word) [Line 328]
-    Doc: Check if a word is likely unknown/foreign and should be logged.
     Called in 2 place(s):
-      - logs.py:451 → if is_likely_unknown_word(word):
-      - logs.py:466 → if (is_likely_unknown_word(word) and len(word) > 4 and
-  • accumulate_correction_data(original_lines, corrected_lines) [Line 431]
-    Doc: Accumulate data about corrections for later logging.
-    Focus on unknown words (names, titles, etc....
-    Called in 2 place(s):
-      - logs.py:561 → accumulate_correction_data(original_lines, corrected_lines)
-      - pipeline.py:182 → accumulate_correction_data(lines, split_lines)
-  • write_session_log() [Line 477]
+      - logs.py:99 → initialize_session_log(output_dir)
+      - logs.py:101 → initialize_session_log()
+  • write_session_log() [Line 288]
     Doc: Write the accumulated session data to a single log file.
-    Called in 2 place(s):
-      - subtitle_workflow.py:457 → write_session_log()
-      - logs.py:182 → write_session_log()
-  • log_names_and_unknown_words(original_lines, corrected_lines, log_file) [Line 557]
-    Doc: Compatibility wrapper - now accumulates data instead of immediately writing.
     Called in 1 place(s):
-      - text_tools.py:662 → log_names_and_unknown_words(texts, results)
-  • on_cli_start(input_file, src_lang, tgt_lang, output_file) [Line 569]
+      - logs.py:157 → write_session_log()
+  • on_cli_start(input_file, src_lang, tgt_lang, output_file) [Line 372]
     Doc: Convenience function to trigger CLI start event.
     Called in 1 place(s):
       - main.py:115 → on_cli_start(args.input_file_path, args.src, args.tgt, output_path)
-  • on_cli_progress(current, total, stage) [Line 574]
-    Doc: Convenience function to trigger CLI progress event.
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • on_cli_finish(output_file, total_lines, duration) [Line 579]
+  • on_cli_finish(output_file, total_lines, duration) [Line 377]
     Doc: Convenience function to trigger CLI finish event.
     Called in 1 place(s):
       - main.py:224 → on_cli_finish(output_path, len(texts), duration)
-  • on_cli_error(error_msg, input_file) [Line 584]
+  • on_cli_error(error_msg, input_file) [Line 382]
     Doc: Convenience function to trigger CLI error event.
     Called in 6 place(s):
       - main.py:93 → on_cli_error(f"Input file not found: {args.input_file_path}", args.input_file_pa
@@ -261,9 +227,6 @@ FILE: logs.py
       - main.py:234 → on_cli_error(f"File not found: {str(e)}", args.input_file_path)
       - main.py:236 → on_cli_error(f"Permission denied: {str(e)}", args.input_file_path)
       - main.py:238 → on_cli_error(f"Translation failed: {str(e)}", args.input_file_path)
-  • register_cli_callback(event_type, callback) [Line 589]
-    Doc: Convenience function to register a CLI callback.
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
 
 FILE: main.py
 --------------------------------------------------
@@ -277,14 +240,14 @@ FILE: main.py
       - main.py:157 → translation_callback=create_translation_callback("translation"),
   • callback(current, total) [Line 44]
     Called in 1 place(s):
-      - logs.py:97 → callback(event_data)
+      - logs.py:90 → callback(event_data)
   • create_post_processing_callback() [Line 51]
     Doc: Create a post-processing progress callback.
     Called in 1 place(s):
       - main.py:181 → translation_callback=create_post_processing_callback(),
   • callback(current, total) [Line 53]
     Called in 1 place(s):
-      - logs.py:97 → callback(event_data)
+      - logs.py:90 → callback(event_data)
   • main() [Line 60]
     Called in 2 place(s):
       - main.py:241 → main()
@@ -295,45 +258,23 @@ FILE: models.py
   • get_nllb_globals() [Line 46]
     Doc: Return the pre-loaded global NLLB model instances for efficiency.
     Called in 3 place(s):
-      - subtitle_workflow.py:29 → TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
+      - subtitle_workflow.py:25 → TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
       - gui_nllb.py:11 → model, tokenizer, device = get_nllb_globals()
       - main.py:119 → model, tokenizer, device = get_nllb_globals()
 
 FILE: pipeline.py
 --------------------------------------------------
-  • _clamp(text, max_chars) [Line 28]
-    Called in 4 place(s):
-      - pipeline.py:77 → matches = _lt_check_with_timeout(tool_pl, _clamp(text), LT_TIMEOUT)
-      - pipeline.py:93 → text = correct_punctuation(_clamp(text), "kredor")
-      - pipeline.py:87 → matches = _lt_check_with_timeout(tool_en, _clamp(text), LT_TIMEOUT)
-      - pipeline.py:83 → text = correct_grammar_with_fallback(_clamp(text), CONFIDENCE_THRESHOLD)
-  • _lt_check_with_timeout(tool, text, timeout_sec) [Line 31]
-    Called in 2 place(s):
-      - pipeline.py:77 → matches = _lt_check_with_timeout(tool_pl, _clamp(text), LT_TIMEOUT)
-      - pipeline.py:87 → matches = _lt_check_with_timeout(tool_en, _clamp(text), LT_TIMEOUT)
-  • run() [Line 33]
+  • _clamp(text, max_chars) [Line 26]
     ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • apply_glossary(text, glossary, use_context) [Line 50]
+  • _lt_check_with_timeout(tool, text, timeout_sec) [Line 29]
+    ⚠️  NOT CALLED ANYWHERE (potential unused function)
+  • run() [Line 31]
+    ⚠️  NOT CALLED ANYWHERE (potential unused function)
+  • apply_glossary(text, glossary, use_context) [Line 48]
     Doc: Apply glossary with enhanced context awareness and better term matching.
-    Called in 6 place(s):
-      - subtitle_workflow.py:216 → clean = apply_glossary(clean, glossary)
-      - subtitle_workflow.py:357 → clean = apply_glossary(clean, glossary)
-      - subtitle_workflow.py:414 → clean = apply_glossary(clean, glossary, use_context=True)
-      - subtitle_workflow.py:201 → clean = apply_glossary(clean, glossary)
-      - pipeline.py:217 → clean = apply_glossary(clean)
-      - pipeline.py:229 → clean_lines.append(apply_glossary(clean))
-  • correct_text(text, lang) [Line 71]
-    Doc: Enhanced single-line correction with confidence-based fallback.
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • correct_text_batch(lines, lang, progress_callback) [Line 112]
-    Doc: Minimalistic correction pipeline to prevent over-correction and quality degradation.
-    Only applie...
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • translate_with_context(lines, src_lang, tgt_lang, polish_only, translation_callback) [Line 198]
-    Doc: Translate lines with small context windows.
-    - Preserves order and length.
-    - Applies glossary...
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
+    Called in 2 place(s):
+      - subtitle_workflow.py:202 → clean = apply_glossary(clean, glossary)
+      - subtitle_workflow.py:187 → clean = apply_glossary(clean, glossary)
 
 FILE: polish_morphology.py
 --------------------------------------------------
@@ -342,10 +283,9 @@ FILE: polish_morphology.py
     
     Args:
         text: Input Polish...
-    Called in 3 place(s):
-      - subtitle_workflow.py:566 → enhanced = enhance_polish_conjugation(enhanced)
-      - text_tools.py:181 → return enhance_polish_conjugation(text)
-      - pipeline.py:152 → enhanced = enhance_polish_conjugation(enhanced)
+    Called in 2 place(s):
+      - subtitle_workflow.py:356 → enhanced = enhance_polish_conjugation(enhanced)
+      - text_tools.py:126 → return enhance_polish_conjugation(text)
   • _fix_verb_conjugation(text) [Line 112]
     Doc: Fix common Polish verb conjugation errors.
     Called in 1 place(s):
@@ -359,19 +299,12 @@ FILE: polish_morphology.py
     
     Args:
         text: Input Pol...
-    Called in 2 place(s):
-      - subtitle_workflow.py:567 → enhanced = improve_polish_style(enhanced)
-      - pipeline.py:153 → enhanced = improve_polish_style(enhanced)
+    Called in 1 place(s):
+      - subtitle_workflow.py:357 → enhanced = improve_polish_style(enhanced)
   • _improve_word_order(text) [Line 168]
     Doc: Improve Polish word order for more natural flow.
     Called in 1 place(s):
       - polish_morphology.py:164 → styled = _improve_word_order(styled)
-  • validate_polish_text(text) [Line 181]
-    Doc: Validate Polish text and return suggestions for improvement.
-    
-    Args:
-        text: Polish tex...
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
 
 FILE: progress_controller.py
 --------------------------------------------------
@@ -384,11 +317,11 @@ FILE: progress_controller.py
       - gui_nllb.py:859 → threading.Thread(target=run_and_reset, daemon=True).start()
       - gui_nllb.py:421 → threading.Thread(target=check_lines, daemon=True).start()
       - gui_nllb.py:507 → threading.Thread(target=check_lines, daemon=True).start()
-      - text_tools.py:454 → insertion_points.append((match.start(), 'conjunction', 2))
-      - text_tools.py:462 → words = [(m.start(), m.end()) for m in re.finditer(r'\S+', text)]
-      - text_tools.py:531 → ph_map.append((placeholder, m.group(0), m.start()))
-      - text_tools.py:588 → words = [(m.group(), m.start(), m.end()) for m in re.finditer(r'\S+', text)]
-      - pipeline.py:39 → t.start()
+      - text_tools.py:392 → insertion_points.append((match.start(), 'conjunction', 2))
+      - text_tools.py:400 → words = [(m.start(), m.end()) for m in re.finditer(r'\S+', text)]
+      - text_tools.py:458 → ph_map.append((placeholder, m.group(0), m.start()))
+      - text_tools.py:515 → words = [(m.group(), m.start(), m.end()) for m in re.finditer(r'\S+', text)]
+      - pipeline.py:37 → t.start()
   • set_post_total(self, post_total) [Line 39] (in class ProgressController)
     Doc: Update the actual post-processing total, replacing the initial estimate.
     Called in 1 place(s):
@@ -439,49 +372,39 @@ FILE: resources.py
   • apply_context_sensitive_glossary(text, context) [Line 203]
     Doc: Apply context-sensitive glossary translations.
     Called in 1 place(s):
-      - pipeline.py:63 → result = apply_context_sensitive_glossary(result)
+      - pipeline.py:61 → result = apply_context_sensitive_glossary(result)
 
 FILE: subtitle_workflow.py
 --------------------------------------------------
-  • run_gui_entry() [Line 10]
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • _get_target_lang_from_code(lang_code) [Line 14]
+  • _get_target_lang_from_code(lang_code) [Line 10]
     Doc: Convert NLLB language codes back to simple language codes for quality enhancement.
     Called in 1 place(s):
-      - subtitle_workflow.py:125 → target_lang = _get_target_lang_from_code(tgt_code)
-  • model_setup() [Line 26]
-    Called in 6 place(s):
-      - subtitle_workflow.py:194 → model_setup()
-      - subtitle_workflow.py:274 → model_setup()  # Ensure NLLB model is loaded
-      - subtitle_workflow.py:345 → model_setup()  # Ensure correct model/tokenizer is set
-      - subtitle_workflow.py:383 → model_setup()  # Ensure correct model/tokenizer is set
-      - subtitle_workflow.py:470 → model_setup()  # Ensure correct model/tokenizer is set
-      - pipeline.py:205 → model_setup()
-  • get_model_lang_code(lang, model_type) [Line 38]
-    Called in 6 place(s):
-      - subtitle_workflow.py:141 → src_code = get_model_lang_code(src_lang, "nllb")
-      - subtitle_workflow.py:142 → tgt_code = get_model_lang_code(tgt_lang, "nllb")
-      - subtitle_workflow.py:222 → src_code = get_model_lang_code(src_lang, model_type)
-      - subtitle_workflow.py:223 → tgt_code = get_model_lang_code(tgt_lang, model_type)
-      - subtitle_workflow.py:476 → src_code = get_model_lang_code(src_lang, model_type)
-      - subtitle_workflow.py:477 → tgt_code = get_model_lang_code(tgt_lang, model_type)
-  • load_nllb_13b() [Line 42]
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • translate_batch_nllb(model, tok, device, lines, src_code, tgt_code, max_length, num_beams, no_repeat_ngram_size, length_penalty, repetition_penalty, temperature, do_sample, top_k, top_p, quality_mode) [Line 52]
+      - subtitle_workflow.py:111 → target_lang = _get_target_lang_from_code(tgt_code)
+  • model_setup() [Line 22]
+    Called in 2 place(s):
+      - subtitle_workflow.py:180 → model_setup()
+      - subtitle_workflow.py:260 → model_setup()  # Ensure NLLB model is loaded
+  • get_model_lang_code(lang, model_type) [Line 34]
+    Called in 4 place(s):
+      - subtitle_workflow.py:127 → src_code = get_model_lang_code(src_lang, "nllb")
+      - subtitle_workflow.py:128 → tgt_code = get_model_lang_code(tgt_lang, "nllb")
+      - subtitle_workflow.py:208 → src_code = get_model_lang_code(src_lang, model_type)
+      - subtitle_workflow.py:209 → tgt_code = get_model_lang_code(tgt_lang, model_type)
+  • translate_batch_nllb(model, tok, device, lines, src_code, tgt_code, max_length, num_beams, no_repeat_ngram_size, length_penalty, repetition_penalty, temperature, do_sample, top_k, top_p, quality_mode) [Line 38]
     Doc: Optimized NLLB translation with improved quality and performance balance.
     Enhanced for subtitle ...
     Called in 1 place(s):
-      - subtitle_workflow.py:149 → preds = translate_batch_nllb(model, tok, device, batch, src_code, tgt_code,
-  • translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang, batch_size, progress_callback, num_beams, length_penalty, temperature, do_sample, top_k, top_p, quality_mode) [Line 135]
+      - subtitle_workflow.py:135 → preds = translate_batch_nllb(model, tok, device, batch, src_code, tgt_code,
+  • translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang, batch_size, progress_callback, num_beams, length_penalty, temperature, do_sample, top_k, top_p, quality_mode) [Line 121]
     Called in 1 place(s):
-      - subtitle_workflow.py:229 → preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang
-  • translate_with_context_nllb(lines, src_lang, tgt_lang, model, tokenizer, device, beams, batch_size, polish_only, glossary, translation_callback, length_penalty, temperature, do_sample, top_k, top_p, quality_mode) [Line 165]
+      - subtitle_workflow.py:215 → preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang
+  • translate_with_context_nllb(lines, src_lang, tgt_lang, model, tokenizer, device, beams, batch_size, polish_only, glossary, translation_callback, length_penalty, temperature, do_sample, top_k, top_p, quality_mode) [Line 151]
     Doc: Context-aware translation with dialogue grouping and robust tag handling.
     - Groups consecutive l...
     Called in 2 place(s):
       - gui_nllb.py:642 → translated_groups = translate_with_context_nllb(
       - main.py:148 → translated_groups = translate_with_context_nllb(
-  • correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary, translation_callback, enable_grammar_correction) [Line 251]
+  • correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary, translation_callback, enable_grammar_correction) [Line 237]
     Doc: Enhanced NLLB correction following the complete architecture pipeline:
     1. Neural grammar correct...
     Called in 4 place(s):
@@ -489,212 +412,140 @@ FILE: subtitle_workflow.py
       - gui_nllb.py:711 → cb = correct_text_batch_nllb(
       - gui_nllb.py:728 → cb = correct_text_batch_nllb(
       - main.py:177 → corrected_all = correct_text_batch_nllb(
-  • translate_lines(lines, src_lang, tgt_lang, translation_callback, glossary) [Line 339]
-    Doc: Context-aware translation with dialogue grouping and robust tag handling.
-    Groups consecutive lin...
-    Called in 1 place(s):
-      - pipeline.py:240 → trans_window = translate_lines(window, src_lang, tgt_lang, translation_callback=
-  • translate_subtitles(file_path, src_lang, tgt_lang, polish_only, translation_callback, glossary, n_wordidx, use_contextaware_n) [Line 377]
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • translate_batch(lines, src_lang, tgt_lang, batch_size, progress_callback) [Line 461]
-    Doc: Enhanced translation batch with improved quality controls for subtitle context.
-    Features:
-    - ...
-    Called in 2 place(s):
-      - subtitle_workflow.py:362 → translated_groups = translate_batch(
-      - subtitle_workflow.py:425 → translated_groups = translate_batch(
-  • _enhance_translation_quality(translated_text, target_lang, source_text, quality_mode) [Line 535]
+  • _enhance_translation_quality(translated_text, target_lang, source_text, quality_mode) [Line 325]
     Doc: Enhanced quality improvement with configurable processing intensity and Polish morphology support.
  ...
-    Called in 2 place(s):
-      - subtitle_workflow.py:128 → enhanced_text = _enhance_translation_quality(text, target_lang,
-      - subtitle_workflow.py:527 → enhanced_text = _enhance_translation_quality(text, tgt_lang, lines[i + idx] if i
-  • _basic_polish_improvements(text) [Line 579]
+    Called in 1 place(s):
+      - subtitle_workflow.py:114 → enhanced_text = _enhance_translation_quality(text, target_lang,
+  • _basic_polish_improvements(text) [Line 369]
     Doc: Basic Polish language improvements as fallback.
     Called in 1 place(s):
-      - subtitle_workflow.py:570 → enhanced = _basic_polish_improvements(enhanced)
+      - subtitle_workflow.py:360 → enhanced = _basic_polish_improvements(enhanced)
 
 FILE: text_tools.py
 --------------------------------------------------
-  • correct_punctuation(text, model_choice) [Line 8]
-    Called in 1 place(s):
-      - pipeline.py:93 → text = correct_punctuation(_clamp(text), "kredor")
-  • correct_grammar(text, num_beams, confidence_threshold) [Line 38]
+  • correct_grammar(text, num_beams, confidence_threshold) [Line 8]
     Doc: Enhanced grammar correction with configurable parameters.
     Optimized grammar correction with conf...
     Called in 1 place(s):
-      - text_tools.py:197 → corrected, confidence = correct_grammar(text)
-  • calculate_text_similarity_confidence(original, corrected) [Line 78]
-    Doc: Calculate confidence based on text similarity and correction magnitude.
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • count_polish_characters(text) [Line 103]
+      - text_tools.py:142 → corrected, confidence = correct_grammar(text)
+  • count_polish_characters(text) [Line 48]
     Doc: Count individual Polish characters in text.
     Called in 4 place(s):
-      - text_tools.py:128 → original_chars = count_polish_characters(original)
-      - text_tools.py:129 → corrected_chars = count_polish_characters(corrected)
-      - text_tools.py:172 → original_polish_chars = count_polish_characters(text)
-      - text_tools.py:734 → original_polish_chars = count_polish_characters(adjusted)
-  • detect_proper_names(text) [Line 111]
+      - text_tools.py:73 → original_chars = count_polish_characters(original)
+      - text_tools.py:74 → corrected_chars = count_polish_characters(corrected)
+      - text_tools.py:117 → original_polish_chars = count_polish_characters(text)
+      - text_tools.py:601 → original_polish_chars = count_polish_characters(adjusted)
+  • detect_proper_names(text) [Line 56]
     Doc: Detect potential proper names (capitalized words) for preservation.
     Called in 2 place(s):
-      - text_tools.py:146 → original_names = detect_proper_names(original)
-      - text_tools.py:173 → original_names = detect_proper_names(text)
-  • validate_character_preservation(original, corrected, min_preservation_rate) [Line 123]
+      - text_tools.py:91 → original_names = detect_proper_names(original)
+      - text_tools.py:118 → original_names = detect_proper_names(text)
+  • validate_character_preservation(original, corrected, min_preservation_rate) [Line 68]
     Doc: Validate that Polish characters are preserved at the specified rate.
     min_preservation_rate: mini...
     Called in 2 place(s):
-      - text_tools.py:209 → if not validate_character_preservation(text, corrected, 1.0):  # 100% preservati
-      - text_tools.py:741 → if validate_character_preservation(adjusted, test_result, 1.0):
-  • validate_name_preservation(original, corrected) [Line 144]
+      - text_tools.py:154 → if not validate_character_preservation(text, corrected, 1.0):  # 100% preservati
+      - text_tools.py:608 → if validate_character_preservation(adjusted, test_result, 1.0):
+  • validate_name_preservation(original, corrected) [Line 89]
     Doc: Check if proper names are preserved in the corrected text.
     Called in 1 place(s):
-      - text_tools.py:214 → if not validate_name_preservation(text, corrected):
-  • correct_grammar_with_fallback(text, confidence_threshold) [Line 162]
+      - text_tools.py:159 → if not validate_name_preservation(text, corrected):
+  • correct_grammar_with_fallback(text, confidence_threshold) [Line 107]
     Doc: Ultra-conservative grammar correction with minimal processing to prevent over-correction.
     Only a...
-    Called in 3 place(s):
-      - subtitle_workflow.py:295 → corrected_group = correct_grammar_with_fallback(group, confidence_threshold=0.9)
-      - text_tools.py:656 → corrected = correct_grammar_with_fallback(text, confidence_threshold)
-      - pipeline.py:83 → text = correct_grammar_with_fallback(_clamp(text), CONFIDENCE_THRESHOLD)
-  • clean_translation(text) [Line 237]
-    Called in 5 place(s):
-      - subtitle_workflow.py:278 → corrected_lines = [clean_translation(line) for line in lines]
-      - subtitle_workflow.py:315 → corrected_group = clean_translation(corrected_group)
-      - pipeline.py:102 → return clean_translation(text)
-      - pipeline.py:105 → return clean_translation(text)
-      - pipeline.py:170 → corrected = clean_translation(t)
-  • extract_tags(text) [Line 243]
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • group_dialogue_lines(lines) [Line 251]
+    Called in 1 place(s):
+      - subtitle_workflow.py:281 → corrected_group = correct_grammar_with_fallback(group, confidence_threshold=0.9)
+  • clean_translation(text) [Line 182]
+    Called in 2 place(s):
+      - subtitle_workflow.py:264 → corrected_lines = [clean_translation(line) for line in lines]
+      - subtitle_workflow.py:301 → corrected_group = clean_translation(corrected_group)
+  • group_dialogue_lines(lines) [Line 189]
     Doc: Groups consecutive lines for translation if the next line starts with a lowercase letter.
     Enhanc...
-    Called in 7 place(s):
-      - subtitle_workflow.py:209 → grouped_lines, group_map = group_dialogue_lines(lines)
-      - subtitle_workflow.py:289 → grouped_lines, group_map = group_dialogue_lines(lines)
-      - subtitle_workflow.py:350 → grouped_lines, group_map = group_dialogue_lines(lines)
-      - subtitle_workflow.py:407 → grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
+    Called in 4 place(s):
+      - subtitle_workflow.py:195 → grouped_lines, group_map = group_dialogue_lines(lines)
+      - subtitle_workflow.py:275 → grouped_lines, group_map = group_dialogue_lines(lines)
       - gui_nllb.py:618 → grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
       - main.py:140 → grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
-      - pipeline.py:122 → grouped_lines, group_map = group_dialogue_lines(lines)
-  • should_continue_group(prev_line, curr_line) [Line 267]
+  • should_continue_group(prev_line, curr_line) [Line 205]
     Doc: Optimized determination if current line should continue the previous group.
     Called in 1 place(s):
-      - text_tools.py:316 → if should_continue_group(current_line, next_line):
-  • is_natural_break(line) [Line 292]
+      - text_tools.py:254 → if should_continue_group(current_line, next_line):
+  • is_natural_break(line) [Line 230]
     Doc: Quick check if a line naturally ends a thought/sentence.
     Called in 1 place(s):
-      - text_tools.py:335 → if is_natural_break(prev_part):
-  • split_grouped_translations(translated_groups, mapping) [Line 347]
+      - text_tools.py:273 → if is_natural_break(prev_part):
+  • split_grouped_translations(translated_groups, mapping) [Line 285]
     Doc: Splits translated grouped lines back into the original number of lines.
     Each group is split into...
-    Called in 7 place(s):
-      - subtitle_workflow.py:243 → split_lines = split_grouped_translations(restored_groups, group_map)
-      - subtitle_workflow.py:329 → corrected_lines = split_grouped_translations(grouped_corrected, group_map)
-      - subtitle_workflow.py:374 → split_lines = split_grouped_translations(restored_groups, group_map)
-      - subtitle_workflow.py:437 → restored_lines = split_grouped_translations(restored_groups, group_map)
+    Called in 4 place(s):
+      - subtitle_workflow.py:229 → split_lines = split_grouped_translations(restored_groups, group_map)
+      - subtitle_workflow.py:315 → corrected_lines = split_grouped_translations(grouped_corrected, group_map)
       - gui_nllb.py:661 → translated = split_grouped_translations(translated_groups, group_map)
       - main.py:164 → translated = split_grouped_translations(translated_groups, group_map)
-      - pipeline.py:175 → split_lines = split_grouped_translations(grouped_corrected, group_map)
-  • extract_newline_tags(text) [Line 370]
+  • extract_newline_tags(text) [Line 308]
     Doc: Remove all \N (and variants) from text, return cleaned text and count of tags.
-    Called in 3 place(s):
-      - subtitle_workflow.py:402 → cleaned, n_count = extract_newline_tags(line)
+    Called in 2 place(s):
       - gui_nllb.py:614 → cleaned, n_count = extract_newline_tags(line)
       - main.py:132 → cleaned, n_count = extract_newline_tags(line)
-  • insert_newline_tags_at_wordidx(text, n_tags, word_idx) [Line 379]
+  • insert_newline_tags_at_wordidx(text, n_tags, word_idx) [Line 317]
     Doc: Insert n_tags of \N at the specified word index (after the word at that index).
     If word_idx >= n...
-    Called in 3 place(s):
-      - subtitle_workflow.py:448 → processed_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+    Called in 2 place(s):
       - gui_nllb.py:792 → final_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
       - main.py:200 → final_lines.append(insert_newline_tags_at_wordidx(line, n_count, n_wordidx))
-  • clean_duplicate_newline_tags(text) [Line 412]
+  • clean_duplicate_newline_tags(text) [Line 350]
     Doc: Clean up duplicate \N tags that may have been inserted multiple times.
     Replaces consecutive \N t...
     Called in 1 place(s):
       - gui_nllb.py:803 → final_line = clean_duplicate_newline_tags(final_line)
-  • insert_newline_tags_contextaware(text, n_tags, prefer_punctuation) [Line 423]
+  • insert_newline_tags_contextaware(text, n_tags, prefer_punctuation) [Line 361]
     Doc: Context-aware insertion of \N tags using punctuation and clause boundaries.
     Enhanced with protec...
-    Called in 4 place(s):
-      - subtitle_workflow.py:445 → processed_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuat
+    Called in 3 place(s):
       - gui_nllb.py:788 → final_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=
-      - text_tools.py:392 → return insert_newline_tags_contextaware(text, n_tags, prefer_punctuation=True)
+      - text_tools.py:330 → return insert_newline_tags_contextaware(text, n_tags, prefer_punctuation=True)
       - main.py:198 → final_lines.append(insert_newline_tags_contextaware(line, n_count, prefer_punctu
-  • restore_tags(translated, tags) [Line 496]
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • strip_subtitle_tags(text) [Line 501]
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • extract_tags_with_placeholders(text) [Line 519]
+  • extract_tags_with_placeholders(text) [Line 446]
     Doc: Replace all tags/escapes with unique placeholders and return:
       clean_text, ph_map
     ph_map: l...
-    Called in 9 place(s):
-      - subtitle_workflow.py:215 → clean, ph_map = extract_tags_with_placeholders(group)
-      - subtitle_workflow.py:356 → clean, ph_map = extract_tags_with_placeholders(group)
-      - subtitle_workflow.py:413 → clean, ph_map = extract_tags_with_placeholders(group)
-      - subtitle_workflow.py:200 → clean, ph_map = extract_tags_with_placeholders(line)
+    Called in 4 place(s):
+      - subtitle_workflow.py:201 → clean, ph_map = extract_tags_with_placeholders(group)
+      - subtitle_workflow.py:186 → clean, ph_map = extract_tags_with_placeholders(line)
       - gui_nllb.py:627 → placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in cleaned_
       - main.py:137 → placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in cleaned_
-      - pipeline.py:228 → clean, ph_map = extract_tags_with_placeholders(line)
-      - pipeline.py:131 → clean, ph = extract_tags_with_placeholders(line)
-      - pipeline.py:216 → clean, ph_map = extract_tags_with_placeholders(line)
-  • repl(m) [Line 528]
+  • repl(m) [Line 455]
     ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • restore_tags_from_placeholders(translated, ph_map) [Line 539]
+  • restore_tags_from_placeholders(translated, ph_map) [Line 466]
     Doc: Replace placeholders in translated text with original tags/escapes.
     If a placeholder is missing ...
-    Called in 11 place(s):
-      - subtitle_workflow.py:240 → restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_m
-      - subtitle_workflow.py:371 → restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_m
-      - subtitle_workflow.py:434 → restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_m
-      - subtitle_workflow.py:202 → out.append(restore_tags_from_placeholders(clean, ph_map))
+    Called in 6 place(s):
+      - subtitle_workflow.py:226 → restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_m
+      - subtitle_workflow.py:188 → out.append(restore_tags_from_placeholders(clean, ph_map))
       - gui_nllb.py:465 → restore_tags_from_placeholders(edited[i], placeholder_maps[i])
       - gui_nllb.py:557 → restore_tags_from_placeholders(edited[i], placeholder_maps[i])
       - gui_nllb.py:762 → restore_tags_from_placeholders(corrected_all[i], placeholder_maps[i])
       - main.py:187 → restore_tags_from_placeholders(corrected_all[i], placeholder_maps[i])
-      - pipeline.py:171 → corrected = restore_tags_from_placeholders(corrected, ph_map[i])
-      - pipeline.py:248 → restored = restore_tags_from_placeholders(text, ph_maps[orig_idx])
-      ... and 1 more calls
-  • normalize_tag(tag) [Line 561]
+  • normalize_tag(tag) [Line 488]
     Called in 2 place(s):
-      - text_tools.py:568 → present_tags.add(normalize_tag(m.group(0)))
-      - text_tools.py:572 → if p not in translated and normalize_tag(o) not in present_tags:
-  • find_optimal_insertion_point(text, original_pos, original_total_len) [Line 576]
+      - text_tools.py:495 → present_tags.add(normalize_tag(m.group(0)))
+      - text_tools.py:499 → if p not in translated and normalize_tag(o) not in present_tags:
+  • find_optimal_insertion_point(text, original_pos, original_total_len) [Line 503]
     Doc: Find the best insertion point using relative positioning and word boundaries.
     Called in 1 place(s):
-      - text_tools.py:638 → insert_at = find_optimal_insertion_point(out, pos, original_total_len)
-  • insert_tag_with_smart_spacing(text, pos, tag) [Line 610]
+      - text_tools.py:565 → insert_at = find_optimal_insertion_point(out, pos, original_total_len)
+  • insert_tag_with_smart_spacing(text, pos, tag) [Line 537]
     Doc: Insert tag with intelligent spacing to avoid collisions.
     Called in 1 place(s):
-      - text_tools.py:639 → out = insert_tag_with_smart_spacing(out, insert_at, original)
-  • correct_grammar_batch(texts, confidence_threshold, enable_logging) [Line 646]
-    Doc: Minimalistic batched grammar correction to prevent over-correction and character loss.
-    Only appl...
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • correct_punctuation_batch(texts, model_choice) [Line 668]
-    Doc: Batched punctuation restoration for a list of strings.
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • decode_one(ids_row, preds_row) [Line 682]
-    Called in 1 place(s):
-      - text_tools.py:702 → return [decode_one(ids_row, pred_row) for ids_row, pred_row in zip(input_ids, pr
-  • adjust_subtitle_style_tone(text, target_lang) [Line 706]
+      - text_tools.py:566 → out = insert_tag_with_smart_spacing(out, insert_at, original)
+  • adjust_subtitle_style_tone(text, target_lang) [Line 573]
     Doc: Minimal subtitle style adjustment - only essential, safe changes.
     Prevents over-correction that ...
-    Called in 3 place(s):
-      - subtitle_workflow.py:312 → corrected_group = adjust_subtitle_style_tone(corrected_group, tgt_lang)
-      - gui_nllb.py:771 → adjusted = adjust_subtitle_style_tone(line, tgt_lang.get())
-      - text_tools.py:764 → return adjust_subtitle_style_tone(text, target_lang)
-  • detect_and_improve_formality(text, target_lang) [Line 756]
-    Doc: Minimal formality improvement - only essential changes to prevent over-correction.
-    Called in 1 place(s):
-      - pipeline.py:100 → text = detect_and_improve_formality(text, lang)
-  • fix_common_translation_issues(text, target_lang) [Line 766]
-    Doc: Minimal fix for only the most essential translation issues.
-    Prevents over-correction by applying...
     Called in 2 place(s):
-      - pipeline.py:99 → text = fix_common_translation_issues(text, lang)
-      - pipeline.py:164 → cleans = [fix_common_translation_issues(text, lang_lower) for text in cleans]
+      - subtitle_workflow.py:298 → corrected_group = adjust_subtitle_style_tone(corrected_group, tgt_lang)
+      - gui_nllb.py:771 → adjusted = adjust_subtitle_style_tone(line, tgt_lang.get())
 
 FILE: utils.py
 --------------------------------------------------
@@ -706,8 +557,7 @@ FILE: utils.py
   • load_subtitle_lines(path) [Line 18]
     Doc: Load subtitle (.ass/.srt) or text (.txt) file and return:
       texts     -> list of non-empty lines...
-    Called in 5 place(s):
-      - subtitle_workflow.py:394 → texts, subs, idx_map = load_subtitle_lines(file_path)
+    Called in 4 place(s):
       - gui_nllb.py:422 → fresh_orig, _, _ = load_subtitle_lines(file_path.get())
       - gui_nllb.py:508 → fresh_orig, _, _ = load_subtitle_lines(file_path.get())
       - gui_nllb.py:603 → texts, subs_loaded, idx_map_loaded = load_subtitle_lines(path)
@@ -715,36 +565,17 @@ FILE: utils.py
   • save_subtitle_lines(lines, file_path, subs, idx_map) [Line 49]
     Doc: Save processed lines back into the original file, preserving alignment.
     For ASS/SRT: only update...
-    Called in 6 place(s):
-      - subtitle_workflow.py:453 → save_subtitle_lines(final_lines, output_path, subs, idx_map)
+    Called in 5 place(s):
       - gui_nllb.py:666 → save_subtitle_lines(translated, output_path, subs, idx_map)
       - gui_nllb.py:468 → save_subtitle_lines(restored, out_path, None, idx_map)
       - gui_nllb.py:560 → save_subtitle_lines(restored, out_path, subs, idx_map)
       - main.py:167 → save_subtitle_lines(translated, output_path, subs, idx_map)
       - main.py:220 → save_subtitle_lines(final_lines, output_path, subs, idx_map)
-  • clean_translation(text) [Line 93]
-    Called in 5 place(s):
-      - subtitle_workflow.py:278 → corrected_lines = [clean_translation(line) for line in lines]
-      - subtitle_workflow.py:315 → corrected_group = clean_translation(corrected_group)
-      - pipeline.py:102 → return clean_translation(text)
-      - pipeline.py:105 → return clean_translation(text)
-      - pipeline.py:170 → corrected = clean_translation(t)
-  • extract_tags(text) [Line 98]
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
-  • restore_tags(text, tags) [Line 103]
-    ⚠️  NOT CALLED ANYWHERE (potential unused function)
 
 ================================================================================
 POTENTIALLY UNUSED FUNCTIONS
 ================================================================================
 These functions are defined but never called (excluding private and special methods):
-  • extract_tags in utils.py:98
-  • extract_tags in text_tools.py:243
-  • restore_tags in utils.py:103
-  • restore_tags in text_tools.py:496
-  • run_gui_entry in subtitle_workflow.py:10
-  • load_nllb_13b in subtitle_workflow.py:42
-  • translate_subtitles in subtitle_workflow.py:377
   • validate_beams in gui_nllb.py:112
   • validate_penalty_temp in gui_nllb.py:119
   • validate_batch_size in gui_nllb.py:126
@@ -765,20 +596,9 @@ These functions are defined but never called (excluding private and special meth
   • insert_result in gui_nllb.py:499
   • update_translation_progress in progress_controller.py:88
   • show_post_start in progress_controller.py:169
-  • on_cli_progress in logs.py:574
-  • register_cli_callback in logs.py:589
-  • get_session_summary in logs.py:186
-  • calculate_text_similarity_confidence in text_tools.py:78
-  • strip_subtitle_tags in text_tools.py:501
-  • correct_grammar_batch in text_tools.py:646
-  • correct_punctuation_batch in text_tools.py:668
-  • repl in text_tools.py:528
-  • validate_polish_text in polish_morphology.py:181
+  • repl in text_tools.py:455
   • handle_exception in gui.py:9
-  • correct_text in pipeline.py:71
-  • correct_text_batch in pipeline.py:112
-  • translate_with_context in pipeline.py:198
-  • run in pipeline.py:33
+  • run in pipeline.py:31
 
 ================================================================================
 FUNCTIONS CALLED BUT NOT DEFINED LOCALLY
@@ -797,12 +617,11 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:69
     ... and 14 more
   • CLICallbackManager (called 1 time(s))
-    - logs.py:565
-  • CLIEventData (called 4 time(s))
-    - logs.py:117
-    - logs.py:134
-    - logs.py:153
-    ... and 1 more
+    - logs.py:368
+  • CLIEventData (called 3 time(s))
+    - logs.py:110
+    - logs.py:128
+    - logs.py:144
   • Canvas (called 2 time(s))
     - gui_nllb.py:430
     - gui_nllb.py:517
@@ -875,10 +694,8 @@ These are likely imported functions, built-ins, or external library calls:
     ... and 1 more
   • SubtitleLogger (called 3 time(s))
     - gui_nllb.py:690
-    - logs.py:113
+    - logs.py:106
     - main.py:174
-  • TRANS_TOKENIZER (called 1 time(s))
-    - subtitle_workflow.py:486
   • Text (called 4 time(s))
     - gui_nllb.py:320
     - gui_nllb.py:381
@@ -896,25 +713,23 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:376
     - gui_nllb.py:424
     ... and 3 more
-  • ValueError (called 4 time(s))
+  • ValueError (called 2 time(s))
     - utils.py:46
     - utils.py:86
-    - subtitle_workflow.py:396
-    ... and 1 more
   • __excepthook__ (called 1 time(s))
     - gui.py:11
-  • abs (called 6 time(s))
-    - text_tools.py:86
-    - text_tools.py:218
-    - text_tools.py:64
-    ... and 3 more
+  • abs (called 5 time(s))
+    - text_tools.py:163
+    - text_tools.py:34
+    - text_tools.py:35
+    ... and 2 more
   • abspath (called 1 time(s))
     - function_analyzer.py:305
-  • add (called 5 time(s))
-    - logs.py:452
-    - text_tools.py:568
+  • add (called 4 time(s))
+    - text_tools.py:495
     - function_analyzer.py:167
-    ... and 2 more
+    - function_analyzer.py:170
+    ... and 1 more
   • add_argument (called 11 time(s))
     - main.py:63
     - main.py:64
@@ -925,49 +740,44 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:693
     - gui_nllb.py:705
     ... and 10 more
-  • any (called 8 time(s))
-    - logs.py:399
-    - logs.py:419
-    - logs.py:467
-    ... and 5 more
-  • append (called 104 time(s))
+  • any (called 5 time(s))
+    - text_tools.py:225
+    - resources.py:183
+    - resources.py:188
+    ... and 2 more
+  • append (called 76 time(s))
     - utils.py:32
     - utils.py:33
     - utils.py:41
-    ... and 101 more
-  • argmax (called 2 time(s))
-    - text_tools.py:14
-    - text_tools.py:678
+    ... and 73 more
   • askopenfilename (called 1 time(s))
     - gui_nllb.py:366
   • basename (called 6 time(s))
-    - logs.py:128
-    - logs.py:130
+    - logs.py:121
+    - logs.py:123
     - function_analyzer.py:218
     ... and 3 more
   • basicConfig (called 1 time(s))
     - gui.py:6
-  • batch_decode (called 2 time(s))
-    - subtitle_workflow.py:121
-    - subtitle_workflow.py:522
+  • batch_decode (called 1 time(s))
+    - subtitle_workflow.py:107
   • bbox (called 2 time(s))
     - gui_nllb.py:435
     - gui_nllb.py:527
   • bind (called 2 time(s))
     - gui_nllb.py:433
     - gui_nllb.py:525
-  • capitalize (called 2 time(s))
-    - logs.py:143
+  • capitalize (called 1 time(s))
     - main.py:46
   • check (called 5 time(s))
-    - subtitle_workflow.py:300
-    - subtitle_workflow.py:306
+    - subtitle_workflow.py:286
+    - subtitle_workflow.py:292
     - gui_nllb.py:410
     ... and 2 more
   • compile (called 3 time(s))
-    - text_tools.py:249
-    - text_tools.py:512
-    - text_tools.py:517
+    - text_tools.py:187
+    - text_tools.py:439
+    - text_tools.py:444
   • config (called 43 time(s))
     - gui_nllb.py:322
     - gui_nllb.py:325
@@ -978,19 +788,13 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:519
     - gui_nllb.py:435
     ... and 1 more
-  • convert_ids_to_tokens (called 2 time(s))
-    - text_tools.py:21
-    - text_tools.py:685
-  • convert_tokens_to_ids (called 2 time(s))
-    - subtitle_workflow.py:82
-    - subtitle_workflow.py:481
-  • correct (called 4 time(s))
-    - subtitle_workflow.py:301
-    - subtitle_workflow.py:307
-    - pipeline.py:79
-    ... and 1 more
+  • convert_tokens_to_ids (called 1 time(s))
+    - subtitle_workflow.py:68
+  • correct (called 2 time(s))
+    - subtitle_workflow.py:287
+    - subtitle_workflow.py:293
   • count (called 1 time(s))
-    - text_tools.py:108
+    - text_tools.py:53
   • create_window (called 2 time(s))
     - gui_nllb.py:437
     - gui_nllb.py:524
@@ -1000,7 +804,7 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:789
     ... and 5 more
   • decode (called 1 time(s))
-    - text_tools.py:61
+    - text_tools.py:31
   • destroy (called 4 time(s))
     - gui_nllb.py:469
     - gui_nllb.py:561
@@ -1008,36 +812,35 @@ These are likely imported functions, built-ins, or external library calls:
     ... and 1 more
   • detect (called 1 time(s))
     - utils.py:14
-  • dirname (called 3 time(s))
-    - subtitle_workflow.py:391
-    - logs.py:105
+  • dirname (called 2 time(s))
+    - logs.py:98
     - function_analyzer.py:305
   • divmod (called 1 time(s))
     - progress_controller.py:83
   • empty_cache (called 1 time(s))
-    - subtitle_workflow.py:158
+    - subtitle_workflow.py:144
   • encode (called 1 time(s))
-    - text_tools.py:49
+    - text_tools.py:19
   • end (called 4 time(s))
-    - text_tools.py:458
-    - text_tools.py:462
-    - text_tools.py:588
+    - text_tools.py:396
+    - text_tools.py:400
+    - text_tools.py:515
     ... and 1 more
-  • enumerate (called 18 time(s))
+  • enumerate (called 14 time(s))
     - utils.py:30
     - utils.py:60
     - utils.py:78
-    ... and 15 more
+    ... and 11 more
   • error (called 1 time(s))
     - gui.py:18
   • escape (called 2 time(s))
     - resources.py:218
-    - pipeline.py:59
-  • eval (called 5 time(s))
-    - subtitle_workflow.py:30
-    - subtitle_workflow.py:49
+    - pipeline.py:57
+  • eval (called 4 time(s))
+    - subtitle_workflow.py:26
     - models.py:11
-    ... and 2 more
+    - models.py:44
+    ... and 1 more
   • exception (called 8 time(s))
     - gui_nllb.py:668
     - gui_nllb.py:472
@@ -1045,53 +848,51 @@ These are likely imported functions, built-ins, or external library calls:
     ... and 5 more
   • exists (called 5 time(s))
     - utils.py:68
-    - logs.py:304
-    - logs.py:309
+    - logs.py:262
+    - logs.py:267
     ... and 2 more
   • extend (called 6 time(s))
-    - subtitle_workflow.py:234
-    - subtitle_workflow.py:153
+    - subtitle_workflow.py:220
+    - subtitle_workflow.py:139
     - gui_nllb.py:745
     ... and 3 more
   • filterwarnings (called 1 time(s))
     - config.py:3
-  • findall (called 16 time(s))
-    - utils.py:99
+  • findall (called 12 time(s))
     - gui_nllb.py:779
     - gui_nllb.py:799
-    ... and 13 more
+    - text_tools.py:61
+    ... and 9 more
   • finditer (called 6 time(s))
-    - text_tools.py:453
-    - text_tools.py:457
-    - text_tools.py:567
+    - text_tools.py:391
+    - text_tools.py:395
+    - text_tools.py:494
     ... and 3 more
   • float (called 6 time(s))
-    - subtitle_workflow.py:73
-    - subtitle_workflow.py:74
-    - subtitle_workflow.py:77
+    - subtitle_workflow.py:59
+    - subtitle_workflow.py:60
+    - subtitle_workflow.py:63
     ... and 3 more
   • format_exception (called 1 time(s))
     - gui.py:13
-  • from_pretrained (called 10 time(s))
-    - subtitle_workflow.py:44
-    - subtitle_workflow.py:47
+  • from_pretrained (called 8 time(s))
     - models.py:13
-    ... and 7 more
-  • generate (called 4 time(s))
-    - subtitle_workflow.py:119
-    - subtitle_workflow.py:496
-    - subtitle_workflow.py:509
-    ... and 1 more
+    - models.py:42
+    - models.py:31
+    ... and 5 more
+  • generate (called 2 time(s))
+    - subtitle_workflow.py:105
+    - text_tools.py:21
   • geometry (called 6 time(s))
     - gui_nllb.py:256
     - gui_nllb.py:378
     - gui_nllb.py:426
     ... and 3 more
-  • get (called 70 time(s))
-    - subtitle_workflow.py:23
-    - subtitle_workflow.py:40
+  • get (called 67 time(s))
+    - subtitle_workflow.py:19
+    - subtitle_workflow.py:36
     - gui_nllb.py:365
-    ... and 67 more
+    ... and 64 more
   • getattr (called 1 time(s))
     - function_analyzer.py:138
   • glob (called 1 time(s))
@@ -1107,9 +908,9 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:83
     ... and 12 more
   • group (called 5 time(s))
-    - subtitle_workflow.py:558
-    - subtitle_workflow.py:558
-    - text_tools.py:531
+    - subtitle_workflow.py:348
+    - subtitle_workflow.py:348
+    - text_tools.py:458
     ... and 2 more
   • hasattr (called 3 time(s))
     - gui_nllb.py:816
@@ -1121,100 +922,84 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:457
     ... and 7 more
   • int (called 17 time(s))
-    - subtitle_workflow.py:72
-    - subtitle_workflow.py:75
-    - subtitle_workflow.py:76
+    - subtitle_workflow.py:58
+    - subtitle_workflow.py:61
+    - subtitle_workflow.py:62
     ... and 14 more
   • is_alive (called 1 time(s))
-    - pipeline.py:41
-  • is_available (called 3 time(s))
-    - subtitle_workflow.py:45
+    - pipeline.py:39
+  • is_available (called 2 time(s))
     - config.py:4
     - models.py:41
   • isalnum (called 4 time(s))
-    - text_tools.py:616
-    - text_tools.py:621
-    - text_tools.py:629
+    - text_tools.py:543
+    - text_tools.py:548
+    - text_tools.py:556
     ... and 1 more
-  • isalpha (called 1 time(s))
-    - logs.py:331
   • isinstance (called 11 time(s))
     - function_analyzer.py:148
     - function_analyzer.py:84
     - function_analyzer.py:127
     ... and 8 more
   • islower (called 2 time(s))
-    - subtitle_workflow.py:552
-    - text_tools.py:282
+    - subtitle_workflow.py:342
+    - text_tools.py:220
   • isoformat (called 3 time(s))
     - logs.py:39
-    - logs.py:250
-    - logs.py:491
+    - logs.py:208
+    - logs.py:302
   • isspace (called 1 time(s))
-    - text_tools.py:396
+    - text_tools.py:334
   • issubclass (called 1 time(s))
     - gui.py:10
-  • isupper (called 2 time(s))
-    - logs.py:416
-    - text_tools.py:192
-  • item (called 2 time(s))
-    - text_tools.py:21
-    - text_tools.py:22
+  • isupper (called 1 time(s))
+    - text_tools.py:137
   • items (called 13 time(s))
-    - logs.py:260
-    - logs.py:523
-    - logs.py:535
+    - logs.py:218
+    - logs.py:334
+    - logs.py:346
     ... and 10 more
-  • join (called 14 time(s))
-    - utils.py:104
-    - logs.py:303
-    - logs.py:308
-    ... and 11 more
+  • join (called 10 time(s))
+    - logs.py:261
+    - logs.py:266
+    - text_tools.py:348
+    ... and 7 more
   • keys (called 2 time(s))
     - function_analyzer.py:228
     - function_analyzer.py:283
-  • len (called 136 time(s))
+  • len (called 117 time(s))
     - utils.py:61
     - utils.py:70
     - utils.py:76
-    ... and 133 more
+    ... and 114 more
   • list (called 1 time(s))
     - function_analyzer.py:49
-  • ljust (called 1 time(s))
-    - logs.py:145
   • load (called 1 time(s))
     - utils.py:28
-  • lower (called 35 time(s))
+  • lower (called 18 time(s))
     - utils.py:25
     - utils.py:57
-    - subtitle_workflow.py:389
-    ... and 32 more
+    - subtitle_workflow.py:183
+    ... and 15 more
   • mainloop (called 1 time(s))
     - gui_nllb.py:897
-  • match (called 1 time(s))
-    - logs.py:422
-  • max (called 27 time(s))
+  • max (called 24 time(s))
     - utils.py:70
     - utils.py:76
     - utils.py:77
-    ... and 24 more
-  • min (called 21 time(s))
-    - subtitle_workflow.py:72
-    - subtitle_workflow.py:73
-    - subtitle_workflow.py:74
-    ... and 18 more
-  • model (called 2 time(s))
-    - text_tools.py:13
-    - text_tools.py:677
-  • no_grad (called 5 time(s))
-    - subtitle_workflow.py:93
-    - subtitle_workflow.py:493
-    - text_tools.py:12
-    ... and 2 more
+    ... and 21 more
+  • min (called 18 time(s))
+    - subtitle_workflow.py:58
+    - subtitle_workflow.py:59
+    - subtitle_workflow.py:60
+    ... and 15 more
+  • no_grad (called 2 time(s))
+    - subtitle_workflow.py:79
+    - text_tools.py:20
   • now (called 5 time(s))
     - logs.py:25
-    - logs.py:215
-    - logs.py:320
+    - logs.py:173
+    - logs.py:278
     ... and 2 more
   • open (called 9 time(s))
     - utils.py:12
@@ -1230,23 +1015,21 @@ These are likely imported functions, built-ins, or external library calls:
     - function_analyzer.py:67
   • parse_args (called 1 time(s))
     - main.py:74
-  • print (called 43 time(s))
-    - logs.py:128
-    - logs.py:145
-    - logs.py:160
-    ... and 40 more
-  • progress_callback (called 3 time(s))
-    - subtitle_workflow.py:156
-    - subtitle_workflow.py:531
-    - pipeline.py:189
+  • print (called 41 time(s))
+    - logs.py:121
+    - logs.py:135
+    - logs.py:136
+    ... and 38 more
+  • progress_callback (called 1 time(s))
+    - subtitle_workflow.py:142
   • protocol (called 2 time(s))
     - gui_nllb.py:427
     - gui_nllb.py:513
-  • range (called 25 time(s))
+  • range (called 18 time(s))
     - utils.py:71
     - utils.py:77
-    - subtitle_workflow.py:227
-    ... and 22 more
+    - subtitle_workflow.py:213
+    ... and 15 more
   • read (called 3 time(s))
     - utils.py:13
     - gui_nllb.py:380
@@ -1256,7 +1039,7 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:135
     - gui_nllb.py:136
   • replace (called 1 time(s))
-    - text_tools.py:555
+    - text_tools.py:482
   • resizable (called 1 time(s))
     - gui_nllb.py:257
   • rsplit (called 1 time(s))
@@ -1268,16 +1051,11 @@ These are likely imported functions, built-ins, or external library calls:
     ... and 2 more
   • save (called 1 time(s))
     - utils.py:63
-  • search (called 5 time(s))
-    - logs.py:394
-    - polish_morphology.py:194
-    - polish_morphology.py:197
-    ... and 2 more
-  • set (called 48 time(s))
+  • set (called 46 time(s))
     - gui_nllb.py:240
     - gui_nllb.py:241
     - gui_nllb.py:242
-    ... and 45 more
+    ... and 43 more
   • showerror (called 8 time(s))
     - gui_nllb.py:891
     - gui_nllb.py:584
@@ -1288,52 +1066,50 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:374
     - gui_nllb.py:879
   • sort (called 2 time(s))
-    - text_tools.py:470
-    - text_tools.py:574
+    - text_tools.py:408
+    - text_tools.py:501
   • sorted (called 6 time(s))
-    - logs.py:497
-    - logs.py:523
-    - logs.py:535
+    - logs.py:308
+    - logs.py:334
+    - logs.py:346
     ... and 3 more
-  • split (called 5 time(s))
+  • split (called 4 time(s))
     - utils.py:25
     - utils.py:57
-    - subtitle_workflow.py:389
-    ... and 2 more
-  • splitext (called 3 time(s))
-    - subtitle_workflow.py:390
+    - text_tools.py:294
+    ... and 1 more
+  • splitext (called 2 time(s))
     - gui_nllb.py:663
-    - logs.py:214
+    - logs.py:172
   • splitlines (called 1 time(s))
     - function_analyzer.py:76
-  • startswith (called 5 time(s))
-    - text_tools.py:25
-    - text_tools.py:278
-    - text_tools.py:689
-    ... and 2 more
+  • startswith (called 3 time(s))
+    - text_tools.py:216
+    - function_analyzer.py:182
+    - function_analyzer.py:184
   • str (called 9 time(s))
     - gui_nllb.py:891
     - main.py:231
     - main.py:234
     ... and 6 more
   • strftime (called 2 time(s))
-    - logs.py:215
-    - logs.py:320
-  • strip (called 30 time(s))
-    - utils.py:96
+    - logs.py:173
+    - logs.py:278
+  • strip (called 25 time(s))
     - utils.py:31
     - utils.py:62
-    ... and 27 more
-  • sub (called 48 time(s))
-    - utils.py:95
-    - utils.py:100
-    - subtitle_workflow.py:548
-    ... and 45 more
-  • sum (called 7 time(s))
-    - text_tools.py:96
-    - text_tools.py:131
-    - text_tools.py:174
-    ... and 4 more
+    - utils.py:40
+    ... and 22 more
+  • sub (called 37 time(s))
+    - subtitle_workflow.py:338
+    - subtitle_workflow.py:339
+    - subtitle_workflow.py:377
+    ... and 34 more
+  • sum (called 6 time(s))
+    - text_tools.py:76
+    - text_tools.py:119
+    - function_analyzer.py:203
+    ... and 3 more
   • tag_config (called 6 time(s))
     - gui_nllb.py:403
     - gui_nllb.py:404
@@ -1349,41 +1125,33 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:255
     - gui_nllb.py:377
     ... and 4 more
-  • to (called 10 time(s))
-    - subtitle_workflow.py:48
-    - subtitle_workflow.py:85
-    - subtitle_workflow.py:486
-    ... and 7 more
-  • tok (called 2 time(s))
-    - subtitle_workflow.py:85
-    - text_tools.py:675
-  • tokenizer (called 1 time(s))
-    - text_tools.py:11
-  • tolist (called 2 time(s))
-    - text_tools.py:684
-    - text_tools.py:684
-  • total_seconds (called 1 time(s))
-    - logs.py:190
+  • to (called 6 time(s))
+    - subtitle_workflow.py:71
+    - text_tools.py:19
+    - models.py:8
+    ... and 3 more
+  • tok (called 1 time(s))
+    - subtitle_workflow.py:71
   • trace_add (called 1 time(s))
     - gui_nllb.py:103
-  • translation_callback (called 9 time(s))
-    - subtitle_workflow.py:247
-    - subtitle_workflow.py:333
-    - subtitle_workflow.py:237
-    ... and 6 more
+  • translation_callback (called 6 time(s))
+    - subtitle_workflow.py:233
+    - subtitle_workflow.py:319
+    - subtitle_workflow.py:223
+    ... and 3 more
   • update_idletasks (called 8 time(s))
     - gui_nllb.py:757
     - gui_nllb.py:701
     - progress_controller.py:96
     ... and 5 more
   • upper (called 4 time(s))
-    - subtitle_workflow.py:553
-    - subtitle_workflow.py:558
+    - subtitle_workflow.py:343
+    - subtitle_workflow.py:348
     - gui_nllb.py:367
     ... and 1 more
   • values (called 7 time(s))
-    - text_tools.py:131
-    - text_tools.py:174
+    - text_tools.py:76
+    - text_tools.py:119
     - models.py:26
     ... and 4 more
   • walk (called 4 time(s))
@@ -1400,11 +1168,11 @@ These are likely imported functions, built-ins, or external library calls:
     - gui_nllb.py:412
   • write (called 47 time(s))
     - utils.py:83
-    - logs.py:248
-    - logs.py:249
+    - logs.py:206
+    - logs.py:207
     ... and 44 more
-  • zip (called 15 time(s))
-    - subtitle_workflow.py:441
-    - subtitle_workflow.py:240
-    - subtitle_workflow.py:371
-    ... and 12 more
+  • zip (called 6 time(s))
+    - subtitle_workflow.py:226
+    - gui_nllb.py:777
+    - gui_nllb.py:806
+    ... and 3 more
