@@ -477,7 +477,6 @@ def extract_tags_with_placeholders(text: str) -> Tuple[str, List[Tuple[str, str,
 
     # Use re.sub to directly replace tags/escapes with placeholders, preserving all other text
     clean_text = TAG_OR_ESCAPE.sub(repl, text)
-    # Debug print for diagnostics
     return clean_text, ph_map
 
 def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str, int]]) -> str:
