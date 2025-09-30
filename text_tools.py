@@ -75,31 +75,6 @@ def correct_grammar(text, num_beams=3, confidence_threshold=0.9):
     except Exception:
         return text, 0.0
 
-def calculate_text_similarity_confidence(original: str, corrected: str) -> float:
-    """
-    Calculate confidence based on text similarity and correction magnitude.
-    """
-    if original == corrected:
-        return 1.0
-    
-    # Simple character-level similarity
-    len_diff = abs(len(original) - len(corrected))
-    max_len = max(len(original), len(corrected))
-    
-    if max_len == 0:
-        return 1.0
-    
-    # Penalize large changes more heavily
-    length_ratio = 1.0 - (len_diff / max_len)
-    
-    # Count character matches
-    matches = sum(1 for a, b in zip(original.lower(), corrected.lower()) if a == b)
-    char_ratio = matches / max_len if max_len > 0 else 1.0
-    
-    # Combine metrics
-    confidence = (length_ratio * 0.3 + char_ratio * 0.7)
-    return max(0.0, min(1.0, confidence))
-
 def count_polish_characters(text: str) -> dict:
     """Count individual Polish characters in text."""
     polish_chars = ['ą', 'ć', 'ę', 'ł', 'ń', 'ó', 'ś', 'ź', 'ż', 'Ą', 'Ć', 'Ę', 'Ł', 'Ń', 'Ó', 'Ś', 'Ź', 'Ż']
@@ -238,13 +213,6 @@ def clean_translation(text):
     text = re.sub(r"\s+([.,!?;:])", r"\1", text)
     text = re.sub(r"\s{2,}", " ", text)
     return text.strip()
-
-# Legacy helpers (kept for compatibility; these move tags to the front)
-def extract_tags(text):
-    # Only extract {\...} tags, not \N or similar linebreaks
-    tags = re.findall(r"{\\.*?}", text)
-    clean_text = re.sub(r"{\\.*?}", "", text)
-    return clean_text, tags
 
 TAG_ONLY = re.compile(r"({\\.*?})")
 
@@ -493,17 +461,6 @@ def insert_newline_tags_contextaware(text: str, n_tags: int, prefer_punctuation:
     
     return result
 
-def restore_tags(translated, tags):
-    return "".join(tags) + translated
-
-
-# Optional: strip all tags and escapes permanently
-def strip_subtitle_tags(text: str) -> str:
-    text = re.sub(r"{\\[^}]+}", "", text)
-    text = re.sub(r"\\[NnHhRr]", "", text)
-    text = re.sub(r"\s{2,}", " ", text)
-    return text.strip()
-
 # ------------------------------------------------------------------------
 # Placeholder-based tag handling (exact position preservation)
 # ------------------------------------------------------------------------
@@ -642,66 +599,6 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
 
 
 # Session logging has been moved to logs.py
-
-def correct_grammar_batch(texts, confidence_threshold: float = 0.9, enable_logging: bool = True):
-    """
-    Minimalistic batched grammar correction to prevent over-correction and character loss.
-    Only applies safe, essential corrections with strict validation.
-    """
-    # Skip processing for texts that are likely to be corrupted
-    results = []
-    
-    for text in texts:
-        # Apply individual correction with ultra-conservative approach
-        corrected = correct_grammar_with_fallback(text, confidence_threshold)
-        results.append(corrected)
-    
-    # Log names and problematic corrections if enabled (always create a log file)
-    if enable_logging:
-        try:
-            log_names_and_unknown_words(texts, results)
-        except Exception:
-            pass  # Don't fail on logging errors
-    
-    return results
-
-def correct_punctuation_batch(texts, model_choice="kredor"):
-    """
-    Batched punctuation restoration for a list of strings.
-    """
-    try:
-        model = PUNCT_MODELS[model_choice]
-        tok = PUNCT_TOKENIZERS[model_choice]
-        enc = tok(texts, return_tensors="pt", truncation=True, padding=True).to(DEVICE)
-        with torch.no_grad():
-            logits = model(**enc).logits  # [B, T, C]
-            preds = torch.argmax(logits, dim=2)  # [B, T]
-        labels = model.config.id2label
-        input_ids = enc["input_ids"]  # [B, T]
-
-        def decode_one(ids_row, preds_row):
-            words, cur = [], ""
-            for token_id, pred_id in zip(ids_row.tolist(), preds_row.tolist()):
-                token = tok.convert_ids_to_tokens(token_id)
-                label = labels.get(pred_id, "O")
-                if token in ["<s>", "</s>", "<pad>", "<unk>"]:
-                    continue
-                if token.startswith("▁"):
-                    if cur:
-                        words.append(cur)
-                    cur = token[1:]
-                else:
-                    cur += token
-                if label != "O":
-                    punct_map = {"LABEL_COMMA": ",", "LABEL_PERIOD": ".", "LABEL_QUESTION": "?"}
-                    cur += punct_map.get(label, "")
-            if cur:
-                words.append(cur)
-            return " ".join(words)
-
-        return [decode_one(ids_row, pred_row) for ids_row, pred_row in zip(input_ids, preds)]
-    except Exception:
-        return texts
 
 def adjust_subtitle_style_tone(text: str, target_lang: str = "pl") -> str:
     """

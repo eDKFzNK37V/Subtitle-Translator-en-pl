@@ -177,32 +177,3 @@ def _improve_word_order(text: str) -> str:
     text = re.sub(r'\bkiedy\s+ty\s+', 'kiedy ', text, flags=re.IGNORECASE)
     
     return text
-
-def validate_polish_text(text: str) -> Tuple[bool, List[str]]:
-    """
-    Validate Polish text and return suggestions for improvement.
-    
-    Args:
-        text: Polish text to validate
-        
-    Returns:
-        Tuple of (is_valid, list_of_suggestions)
-    """
-    suggestions = []
-    
-    # Check for common issues
-    if re.search(r'\b(the|a|an)\s+', text, re.IGNORECASE):
-        suggestions.append("Remove English articles (the, a, an) - Polish doesn't use them")
-    
-    if re.search(r'\bja\s+(jestem|mam|robię)', text, re.IGNORECASE):
-        suggestions.append("Consider removing redundant pronouns in Polish")
-    
-    if re.search(r'"[^"]*"', text):
-        suggestions.append("Consider using Polish quotation marks (Polish quotes)")
-    
-    # Check for proper Polish characters
-    if not re.search(r'[ąćęłńóśźż]', text, re.IGNORECASE) and len(text) > 10:
-        suggestions.append("Text may be missing Polish diacritical marks")
-    
-    is_valid = len(suggestions) == 0
-    return is_valid, suggestions

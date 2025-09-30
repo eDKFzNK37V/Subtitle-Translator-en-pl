@@ -182,23 +182,6 @@ class CLICallbackManager:
             write_session_log()
         except Exception:
             pass
-    
-    def get_session_summary(self) -> Dict[str, Any]:
-        """Get summary of the current CLI session."""
-        duration = None
-        if self.session_data['start_time'] and self.session_data['end_time']:
-            duration = (self.session_data['end_time'] - self.session_data['start_time']).total_seconds()
-        
-        return {
-            'input_file': self.session_data['input_file'],
-            'output_file': self.session_data['output_file'],
-            'src_lang': self.session_data['src_lang'],
-            'tgt_lang': self.session_data['tgt_lang'],
-            'duration': duration,
-            'total_events': len(self.session_data['events']),
-            'errors': len(self.session_data['errors']),
-            'success': len(self.session_data['errors']) == 0
-        }
 
 
 class SubtitleLogger:
@@ -571,11 +554,6 @@ def on_cli_start(input_file: str, src_lang: str, tgt_lang: str, output_file: Opt
     cli_callbacks.on_start(input_file, src_lang, tgt_lang, output_file)
 
 
-def on_cli_progress(current: int, total: int, stage: str = "processing"):
-    """Convenience function to trigger CLI progress event."""
-    cli_callbacks.on_progress(current, total, stage)
-
-
 def on_cli_finish(output_file: str, total_lines: int, duration: Optional[float] = None):
     """Convenience function to trigger CLI finish event."""
     cli_callbacks.on_finish(output_file, total_lines, duration)
@@ -584,8 +562,3 @@ def on_cli_finish(output_file: str, total_lines: int, duration: Optional[float] 
 def on_cli_error(error_msg: str, input_file: Optional[str] = None):
     """Convenience function to trigger CLI error event."""
     cli_callbacks.on_error(error_msg, input_file)
-
-
-def register_cli_callback(event_type: str, callback: Callable[[CLIEventData], None]):
-    """Convenience function to register a CLI callback."""
-    cli_callbacks.register_callback(event_type, callback)

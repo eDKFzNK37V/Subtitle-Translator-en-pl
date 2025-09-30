@@ -7,10 +7,6 @@ from models import get_nllb_globals
 from config import DEVICE, selected_engine as global_selected_engine
 from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
 
-def run_gui_entry():
-    from gui import run_gui
-    run_gui()
-
 def _get_target_lang_from_code(lang_code):
     """Convert NLLB language codes back to simple language codes for quality enhancement."""
     code_map = {
@@ -38,16 +34,6 @@ NLLB_LANG = {
 def get_model_lang_code(lang, model_type="nllb"):
     # Always use NLLB language codes
     return NLLB_LANG.get(lang, lang)
-
-def load_nllb_13b():
-    model_id = "facebook/nllb-200-3.3B"
-    tok = AutoTokenizer.from_pretrained(model_id)
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    dtype = torch.float16 if device == "cuda" else None
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_id, torch_dtype=dtype)
-    model.to(device)
-    model.eval()
-    return model, tok, device
 
 def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
                          max_length=256, num_beams=3, no_repeat_ngram_size=2,
@@ -373,90 +359,6 @@ def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossa
     # Split grouped translations back to original lines
     split_lines = split_grouped_translations(restored_groups, group_map)
     return split_lines
-
-def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None, n_wordidx=0, use_contextaware_n=False):
-    import os
-    r"""
-    Load (texts, subs, idx_map), apply dialogue grouping, tag handling, and context-aware translation.
-    Enhanced with context-aware \N reinsertion and improved processing pipeline.
-    """
-    model_setup()  # Ensure correct model/tokenizer is set
-    from pipeline import apply_glossary, GLOSSARY
-    from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, insert_newline_tags_contextaware, group_dialogue_lines, split_grouped_translations
-    from logs import initialize_session_log
-
-    # Initialize session logging at the start with output directory
-    ext = file_path.split('.')[-1].lower()
-    output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
-    output_dir = os.path.dirname(output_path)
-    initialize_session_log(output_dir)
-
-    texts, subs, idx_map = load_subtitle_lines(file_path)
-    if not texts:
-        raise ValueError(f"[translate_subtitles] No subtitle lines loaded from {file_path!r}")
-
-    # --- Remove \N tags and count them ---
-    cleaned_lines = []
-    n_tag_counts = []
-    for line in texts:
-        cleaned, n_count = extract_newline_tags(line)
-        cleaned_lines.append(cleaned)
-        n_tag_counts.append(n_count)
-
-    # Dialogue grouping for context-aware translation
-    grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
-
-    # Pre-extract tags/placeholders for all grouped lines
-    grouped_clean = []
-    grouped_ph_maps = []
-    for group in grouped_lines:
-        clean, ph_map = extract_tags_with_placeholders(group)
-        clean = apply_glossary(clean, glossary, use_context=True)
-        grouped_clean.append(clean)
-        grouped_ph_maps.append(ph_map)
-
-    # If polishing only and same language, skip model translate
-    if polish_only and src_lang.lower() == tgt_lang.lower():
-        translated_groups = grouped_clean[:]
-        if translation_callback:
-            for idx in range(1, len(translated_groups) + 1):
-                translation_callback(idx, len(translated_groups))
-    else:
-        translated_groups = translate_batch(
-            grouped_clean,
-            src_lang,
-            tgt_lang,
-            batch_size=6,
-            progress_callback=translation_callback
-        )
-
-    # Restore tags for each group
-    restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_map in zip(translated_groups, grouped_ph_maps)]
-
-    # Split grouped translations back to original lines
-    restored_lines = split_grouped_translations(restored_groups, group_map)
-
-    # --- Enhanced \N tag insertion logic ---
-    final_lines = []
-    for line, n_count in zip(restored_lines, n_tag_counts):
-        if n_count > 0:
-            if use_contextaware_n:
-                # Use context-aware insertion
-                processed_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True)
-            else:
-                # Use word index-based insertion (backwards compatibility)
-                processed_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
-        else:
-            processed_line = line
-        final_lines.append(processed_line)
-
-    save_subtitle_lines(final_lines, output_path, subs, idx_map)
-
-    # Write session log at the end of translation
-    from logs import write_session_log
-    write_session_log()
-
-    return output_path, texts, final_lines
 
 def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=None):
     """

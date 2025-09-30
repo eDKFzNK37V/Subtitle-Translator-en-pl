@@ -84,23 +84,3 @@ def save_subtitle_lines(lines: List[str], file_path: str,
 
     else:
         raise ValueError(f"Unsupported file format: .{ext}")
-
-# -------------------------------------------------------------------
-# Other existing utility functions from your original file
-# (kept exactly as they were)
-# -------------------------------------------------------------------
-
-def clean_translation(text: str) -> str:
-    # Your existing cleaning logic
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
-
-def extract_tags(text: str) -> Tuple[str, List[str]]:
-    tags = re.findall(r'(\{\\.*?\})', text)
-    clean_text = re.sub(r'\{\\.*?\}', '', text)
-    return clean_text, tags
-
-def restore_tags(text: str, tags: List[str]) -> str:
-    return ''.join(tags) + text
-
-# ... (all your other original helper functions remain unchanged)
