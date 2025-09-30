@@ -1,3 +1,47 @@
+## Actionable Examples & Troubleshooting
+
+### Example: Full CLI Translation Flow
+
+1. Translate a subtitle file from English to Polish:
+   ```bash
+   python main.py example.ass --src en --tgt pl
+   ```
+2. Output will be saved as `example_pl.ass`.
+3. All tags and `\N` linebreaks are preserved in context-aware positions.
+
+### Example: GUI Workflow
+
+1. Launch the GUI:
+   ```bash
+   python main.py
+   ```
+2. Select a subtitle file, source/target language, and options.
+3. Progress and logs are shown in the GUI; output is saved with language suffix.
+
+### Example: Tag Handling
+
+- Input: `Hello,\Nworld! {\pos(320,240)}`
+- After extraction: `Hello, world!`
+- After translation: `Cześć, świecie!`
+- After reinsertion: `Cześć,\Nświecie! {\pos(320,240)}`
+
+### Troubleshooting
+
+- **Model not found or device error:**
+  - Check `models.py` and `config.py` for device/model logic.
+  - Ensure torch is installed for your hardware (see requirements.txt note).
+- **Tag placement issues:**
+  - Review `text_tools.py: extract_tags_with_placeholders` and `restore_tags_from_placeholders`.
+- **Dialogue grouping/translation context issues:**
+  - See `group_dialogue_lines` and `split_grouped_translations` in `text_tools.py`.
+- **Grammar correction too aggressive:**
+  - Adjust confidence threshold in `pipeline.py: correct_grammar_with_fallback`.
+- **Performance issues:**
+  - Tune batch sizes and timeouts in `pipeline.py`.
+- **Debugging:**
+  - All CLI/GUI events and corrections are logged via `logs.py`.
+  - Check log files for session summaries and error details.
+
 ## Project-Specific Conventions & Integration Points
 
 - **Tag Handling:**

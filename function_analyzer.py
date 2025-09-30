@@ -24,7 +24,7 @@ class FunctionInfo:
     line_number: int
     class_name: Optional[str] = None
     is_method: bool = False
-    args: List[str] = None
+    args: Optional[List[str]] = None
     docstring: Optional[str] = None
 
 @dataclass
