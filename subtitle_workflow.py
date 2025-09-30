@@ -245,7 +245,6 @@ def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translatio
     Parameters:
       - enable_grammar_correction: Whether to apply grammar correction (default: True)
     """
-    from pipeline import correct_text_batch
     from text_tools import (
         correct_grammar_with_fallback, 
         adjust_subtitle_style_tone,
