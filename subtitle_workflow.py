@@ -40,7 +40,7 @@ def get_model_lang_code(lang, model_type="nllb"):
     return NLLB_LANG.get(lang, lang)
 
 def load_nllb_13b():
-    model_id = "facebook/nllb-200-1.3B"
+    model_id = "facebook/nllb-200-3.3B"
     tok = AutoTokenizer.from_pretrained(model_id)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.float16 if device == "cuda" else None
@@ -51,14 +51,32 @@ def load_nllb_13b():
 
 def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
                          max_length=256, num_beams=3, no_repeat_ngram_size=2,
-                         length_penalty=1.0, repetition_penalty=1.0):
+                         length_penalty=1.0, repetition_penalty=1.0, temperature=1.0,
+                         do_sample=False, top_k=50, top_p=0.9, quality_mode="balanced"):
     """
     Optimized NLLB translation with improved quality and performance balance.
     Enhanced for subtitle translation with streamlined parameters.
     Assumes:
       - tok is the NLLB tokenizer
       - src_code/tgt_code are already in NLLB form (e.g. "eng_Latn", "pol_Latn")
+    
+    Parameters:
+      - num_beams: Number of beams for beam search (default: 3, range: 1-10)
+      - length_penalty: Length penalty for beam search (default: 1.0, range: 0.1-2.0)
+      - temperature: Sampling temperature when do_sample=True (default: 1.0, range: 0.1-2.0)
+      - do_sample: Whether to use sampling instead of greedy decoding (default: False)
+      - top_k: Top-k sampling parameter (default: 50)
+      - top_p: Top-p (nucleus) sampling parameter (default: 0.9)
     """
+    # Parameter validation and bounds checking
+    num_beams = max(1, min(10, int(num_beams)))
+    length_penalty = max(0.1, min(2.0, float(length_penalty)))
+    temperature = max(0.1, min(2.0, float(temperature)))
+    max_length = max(32, min(512, int(max_length)))
+    no_repeat_ngram_size = max(1, min(5, int(no_repeat_ngram_size)))
+    repetition_penalty = max(0.5, min(2.0, float(repetition_penalty)))
+    top_k = max(1, min(100, int(top_k)))
+    top_p = max(0.1, min(1.0, float(top_p)))
     # Directly set the NLLB tokenizer’s src and tgt
     tok.src_lang = src_code
     tgt_id = tok.convert_tokens_to_ids(tgt_code)
@@ -73,19 +91,32 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     ).to(device)
 
     with torch.no_grad():
-        # Optimized generation parameters balancing quality and speed
-        gen = model.generate(
-            **enc,
-            forced_bos_token_id=tgt_id,
-            max_length=max_length,
-            num_beams=num_beams,  # Conservative beam count for consistency
-            early_stopping=True,
-            length_penalty=length_penalty,  # Neutral length penalty
-            no_repeat_ngram_size=no_repeat_ngram_size,  # Conservative repetition control
-            do_sample=False,  # Deterministic for consistency
-            num_return_sequences=1,
-            repetition_penalty=repetition_penalty,  # Minimal repetition penalty
-        )
+        # Configurable generation parameters for quality and speed balance
+        gen_kwargs = {
+            "input_ids": enc.input_ids,
+            "attention_mask": enc.attention_mask,
+            "forced_bos_token_id": tgt_id,
+            "max_length": max_length,
+            "num_beams": num_beams,
+            "early_stopping": True,
+            "length_penalty": length_penalty,
+            "no_repeat_ngram_size": no_repeat_ngram_size,
+            "do_sample": do_sample,
+            "num_return_sequences": 1,
+            "repetition_penalty": repetition_penalty,
+        }
+        
+        # Add sampling-specific parameters when sampling is enabled
+        if do_sample:
+            gen_kwargs["temperature"] = temperature
+            gen_kwargs["top_k"] = top_k
+            gen_kwargs["top_p"] = top_p
+            
+        # Debug logging (can be enabled during testing)
+        # print(f"[DEBUG] translate_batch_nllb params: beams={num_beams}, length_penalty={length_penalty}, "
+        #       f"temperature={temperature}, sampling={do_sample}, top_k={top_k}, top_p={top_p}")
+            
+        gen = model.generate(**gen_kwargs)
     
     decoded = tok.batch_decode(gen, skip_special_tokens=True)
     
@@ -93,14 +124,18 @@ def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
     enhanced_results = []
     target_lang = _get_target_lang_from_code(tgt_code)
     for idx, text in enumerate(decoded):
-        # Apply immediate quality improvements with optimized processing
-        enhanced_text = _enhance_translation_quality(text, target_lang, lines[idx] if idx < len(lines) else "")
+        # Apply quality improvements based on the preset/mode
+        enhanced_text = _enhance_translation_quality(text, target_lang, 
+                                                   lines[idx] if idx < len(lines) else "", 
+                                                   quality_mode)
         enhanced_results.append(enhanced_text)
     
     return enhanced_results
 
 def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
-                         batch_size=12, progress_callback=None):
+                         batch_size=12, progress_callback=None, num_beams=3,
+                         length_penalty=1.0, temperature=1.0, do_sample=False,
+                         top_k=50, top_p=0.9, quality_mode="balanced"):
     # Always use the model and tokenizer passed as arguments (do not overwrite with globals)
     # Map GUI codes ("en","pl") → NLLB codes ("eng_Latn","pol_Latn")
     src_code = get_model_lang_code(src_lang, "nllb")
@@ -111,7 +146,10 @@ def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
     while i < len(lines):
         try:
             batch = lines[i:i+bs]
-            preds = translate_batch_nllb(model, tok, device, batch, src_code, tgt_code)
+            preds = translate_batch_nllb(model, tok, device, batch, src_code, tgt_code,
+                                       num_beams=num_beams, length_penalty=length_penalty,
+                                       temperature=temperature, do_sample=do_sample,
+                                       top_k=top_k, top_p=top_p, quality_mode=quality_mode)
             out.extend(preds)
             i += bs
             if progress_callback:
@@ -135,7 +173,13 @@ def translate_with_context_nllb(
     batch_size=12,
     polish_only=False,
     glossary=None,
-    translation_callback=None
+    translation_callback=None,
+    length_penalty=1.0,
+    temperature=1.0,
+    do_sample=False,
+    top_k=50,
+    top_p=0.9,
+    quality_mode="balanced"
 ):
     """
     Context-aware translation with dialogue grouping and robust tag handling.
@@ -182,7 +226,11 @@ def translate_with_context_nllb(
     translated_groups = []
     for i in range(0, len(grouped_clean), batch_size):
         batch = grouped_clean[i:i+batch_size]
-        preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang, batch_size=batch_size, progress_callback=None)
+        preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang, 
+                                   batch_size=batch_size, progress_callback=None,
+                                   num_beams=beams, length_penalty=length_penalty,
+                                   temperature=temperature, do_sample=do_sample,
+                                   top_k=top_k, top_p=top_p, quality_mode=quality_mode)
         translated_groups.extend(preds)
         if translation_callback:
             progress = min(i + len(batch), len(grouped_clean))
@@ -200,17 +248,89 @@ def translate_with_context_nllb(
 
     return split_lines
 
-def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None):
+def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None, 
+                          enable_grammar_correction=True):
     """
-    Enhanced NLLB correction using the comprehensive correction pipeline from pipeline.py
+    Enhanced NLLB correction following the complete architecture pipeline:
+    1. Neural grammar correction with confidence scoring/fallback
+    2. LanguageTool correction with timeout
+    3. Style/tone adjustment for subtitles
+    
+    Parameters:
+      - enable_grammar_correction: Whether to apply grammar correction (default: True)
     """
     from pipeline import correct_text_batch
+    from text_tools import (
+        correct_grammar_with_fallback, 
+        adjust_subtitle_style_tone,
+        clean_translation,
+        group_dialogue_lines,
+        split_grouped_translations
+    )
+    import language_tool_python
+    from resources import tool_pl, tool_en
     
     # Use the enhanced correction pipeline with NLLB model setup
     model_setup()  # Ensure NLLB model is loaded
     
-    # Apply the enhanced correction pipeline
-    corrected_lines = correct_text_batch(lines, tgt_lang, translation_callback)
+    if not enable_grammar_correction:
+        # Skip grammar correction, just return minimal processing
+        corrected_lines = [clean_translation(line) for line in lines]
+        if translation_callback:
+            for i in range(1, len(lines) + 1):
+                translation_callback(i, len(lines))
+        return corrected_lines
+    
+    # Follow the complete architecture pipeline for grammar correction
+    total = len(lines)
+    corrected_lines = []
+    
+    # Group dialogue lines for context preservation
+    grouped_lines, group_map = group_dialogue_lines(lines)
+    
+    grouped_corrected = []
+    for group_idx, group in enumerate(grouped_lines):
+        try:
+            # Step 1: Neural grammar correction with confidence scoring/fallback
+            corrected_group = correct_grammar_with_fallback(group, confidence_threshold=0.9)
+            
+            # Step 2: LanguageTool correction with timeout (following architecture)
+            if tgt_lang.lower() == "pl":
+                try:
+                    matches = tool_pl.check(corrected_group)
+                    corrected_group = language_tool_python.utils.correct(corrected_group, matches)
+                except Exception:
+                    pass  # Skip on timeout/error
+            elif tgt_lang.lower() == "en":
+                try:
+                    matches = tool_en.check(corrected_group)
+                    corrected_group = language_tool_python.utils.correct(corrected_group, matches)
+                except Exception:
+                    pass  # Skip on timeout/error
+            
+            # Step 3: Style/tone adjustment for subtitles (following architecture)
+            corrected_group = adjust_subtitle_style_tone(corrected_group, tgt_lang)
+            
+            # Step 4: Final cleanup
+            corrected_group = clean_translation(corrected_group)
+            
+            grouped_corrected.append(corrected_group)
+            
+        except Exception as e:
+            # Fallback to original on any error
+            grouped_corrected.append(group)
+            
+        # Update progress
+        if translation_callback:
+            progress = ((group_idx + 1) * len(lines)) // len(grouped_lines)
+            translation_callback(min(progress, total), total)
+    
+    # Split grouped corrections back to original lines
+    corrected_lines = split_grouped_translations(grouped_corrected, group_map)
+    
+    # Final progress update
+    if translation_callback:
+        translation_callback(total, total)
     
     return corrected_lines
 
@@ -412,25 +532,71 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
 
     return translated
 
-def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "") -> str:
+def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "", quality_mode: str = "balanced") -> str:
     """
-    Minimal quality enhancement to prevent over-correction issues.
-    Only applies the safest, most essential improvements.
+    Enhanced quality improvement with configurable processing intensity and Polish morphology support.
+    
+    Parameters:
+        quality_mode: "conservative" (minimal changes), "balanced" (default), "aggressive" (more changes)
     """
     if not translated_text.strip():
         return translated_text
     
     enhanced = translated_text
     
-    # Only essential spacing fixes - nothing more to prevent over-correction
+    # Essential spacing fixes (all modes)
     enhanced = re.sub(r'\s{2,}', ' ', enhanced)  # Multiple spaces to single
     enhanced = re.sub(r'\s+([.!?,:;])', r'\1', enhanced)  # Remove space before punctuation
     
-    # Capitalize first letter if needed
+    # Capitalize first letter if needed (all modes)
     if enhanced and enhanced[0].islower():
         enhanced = enhanced[0].upper() + enhanced[1:]
     
+    # Additional processing based on quality mode
+    if quality_mode == "aggressive":
+        # More thorough processing for quality preset
+        enhanced = re.sub(r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), enhanced)
+        # Fix common translation artifacts
+        enhanced = re.sub(r'\b(a|an|the)\s+(a|an|the)\b', r'\1', enhanced, flags=re.IGNORECASE)
+        
+        # Apply Polish-specific improvements for Polish target language
+        if target_lang.lower() in ['pl', 'pol', 'polish']:
+            try:
+                from polish_morphology import enhance_polish_conjugation, improve_polish_style
+                enhanced = enhance_polish_conjugation(enhanced)
+                enhanced = improve_polish_style(enhanced)
+            except ImportError:
+                # Fallback to basic Polish improvements if module not available
+                enhanced = _basic_polish_improvements(enhanced)
+                
+    elif quality_mode == "conservative":
+        # Minimal processing for speed preset - just basic cleanup
+        pass
+    # "balanced" uses the default processing above
+    
     return enhanced.strip()
+
+def _basic_polish_improvements(text: str) -> str:
+    """Basic Polish language improvements as fallback."""
+    if not text:
+        return text
+    
+    improved = text
+    
+    # Remove redundant pronouns (common in machine translation)
+    improved = re.sub(r'\bja jestem\b', 'jestem', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bty jesteś\b', 'jesteś', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bon jest\b', 'jest', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bona jest\b', 'jest', improved, flags=re.IGNORECASE)
+    
+    # Fix common Polish punctuation
+    improved = re.sub(r'"([^"]*)"', r'„\1"', improved)  # Polish quotation marks
+    
+    # Make more conversational for subtitles
+    improved = re.sub(r'\bdziękuję bardzo\b', 'dzięki', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bproszę bardzo\b', 'proszę', improved, flags=re.IGNORECASE)
+    
+    return improved
 
 
 

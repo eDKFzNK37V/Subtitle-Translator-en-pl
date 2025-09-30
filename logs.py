@@ -328,7 +328,7 @@ def initialize_session_log(output_dir=None):
 def is_likely_unknown_word(word: str) -> bool:
     """Check if a word is likely unknown/foreign and should be logged."""
     # Skip very short words or non-alphabetic words
-    if len(word) < 3 or not word.isalpha():
+    if len(word) < 4 or not word.isalpha():  # Increased minimum length to 4
         return False
         
     # Extended list of common English words to exclude
@@ -345,7 +345,12 @@ def is_likely_unknown_word(word: str) -> bool:
         'off', 'out', 'over', 'under', 'through', 'around', 'between', 'among', 'against', 'along',
         'sword', 'skill', 'power', 'magic', 'weapon', 'shield', 'armor', 'battle', 'fight',
         'attack', 'defend', 'player', 'great', 'strong', 'weak', 'help', 'visit', 'today',
-        'uses', 'powerful', 'funny', 'everyone', 'blue', 'red', 'green', 'white', 'black'
+        'uses', 'powerful', 'funny', 'everyone', 'blue', 'red', 'green', 'white', 'black',
+        # Additional common words to reduce false positives
+        'been', 'being', 'done', 'doing', 'made', 'making', 'used', 'using', 'seen', 'seeing',
+        'heard', 'hearing', 'called', 'calling', 'told', 'telling', 'went', 'going', 'came',
+        'coming', 'left', 'leaving', 'right', 'wrong', 'true', 'false', 'real', 'fake', 'nice',
+        'mean', 'kind', 'cruel', 'happy', 'sad', 'angry', 'calm', 'quiet', 'loud', 'fast', 'slow'
     }
     
     if word.lower() in common_english:
