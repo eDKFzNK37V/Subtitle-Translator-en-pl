@@ -1,3 +1,23 @@
+def force_preserve_names(original: str, translated: str) -> str:
+    """
+    Ensure all proper names (unknown words) from the original are present in the translated line.
+    If a name is missing, reinsert it at a reasonable position (start of line, or after tag if present).
+    """
+    names = detect_proper_names(original)
+    out = translated
+    for name in names:
+        # If name (case-insensitive) is not present in output, reinsert
+        if name.lower() not in out.lower():
+            # Insert after leading tag if present, else at start
+            tag_match = re.match(r'^(\{\\[a-zA-Z0-9]+[^}]*})', out)
+            insert_pos = tag_match.end() if tag_match else 0
+            # Add a space if needed
+            if insert_pos > 0 and not out[insert_pos:insert_pos+1].isspace():
+                name_to_insert = ' ' + name
+            else:
+                name_to_insert = name + ' '
+            out = out[:insert_pos] + name_to_insert + out[insert_pos:]
+    return out
 from typing import List, Tuple
 import re
 import torch
@@ -534,6 +554,11 @@ def extract_tags_with_placeholders(text: str) -> Tuple[str, List[Tuple[str, str,
 
     # Use re.sub to directly replace tags/escapes with placeholders, preserving all other text
     clean_text = TAG_OR_ESCAPE.sub(repl, text)
+    with open("tag_debug.log", "a", encoding="utf-8") as dbg:
+        dbg.write("[DEBUG extract_tags_with_placeholders]\n")
+        dbg.write(f"  Input: {repr(text)}\n")
+        dbg.write(f"  Clean: {repr(clean_text)}\n")
+        dbg.write(f"  ph_map: {ph_map}\n")
     return clean_text, ph_map
 
 def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str, int]]) -> str:
@@ -549,81 +574,107 @@ def restore_tags_from_placeholders(translated: str, ph_map: List[Tuple[str, str,
     """
     out = translated
 
-    # First pass: replace placeholders that survived translation
+    with open("tag_debug.log", "a", encoding="utf-8") as dbg:
+        dbg.write("[DEBUG restore_tags_from_placeholders]\n")
+        dbg.write(f"  Input: {repr(translated)}\n")
+        dbg.write(f"  ph_map: {ph_map}\n")
+
+    import re
+    # Helper to match tag type (e.g., {\pos, {\an8})
+    def tag_type(tag):
+        m = re.match(r"\{\\?([a-zA-Z0-9]+)", tag)
+        return m.group(1).lower() if m else None
+
+    # Remove malformed tags (e.g., {\Ang})
+    out = re.sub(r'\{\\Ang\}', '', out)
+
+    # Replace placeholders with original tags
     for placeholder, original, _pos in ph_map:
         if placeholder in out:
             out = out.replace(placeholder, original)
 
+    # Only insert if a similar tag is not already present
+    missing = []
+    for (p, o, pos) in ph_map:
+        tag_pat = re.escape(o[:6])[:-1]  # e.g., '{\\pos' or '{\\an'
+        # Look for any tag of the same type (e.g., {\pos...})
+        if p not in translated and not re.search(tag_pat + r'[^}]*}', out):
             missing.append((p, o, pos))
+    with open("tag_debug.log", "a", encoding="utf-8") as dbg:
+        dbg.write(f"  Missing tags to reinsert: {missing}\n")
     missing.sort(key=lambda x: x[2])
 
     def find_optimal_insertion_point(text: str, original_pos: int, original_total_len: int) -> int:
-        """
-        Find the best insertion point using relative positioning and word boundaries.
-        """
         if not text.strip():
             return 0
-            
-        # Calculate relative position (0.0 to 1.0)
         relative_pos = original_pos / max(original_total_len, 1)
         target_char = int(relative_pos * len(text))
-        
-        # Find nearest word boundary
         words = [(m.group(), m.start(), m.end()) for m in re.finditer(r'\S+', text)]
         if not words:
             return 0
-            
-        # Find the word closest to our target position
         best_insert = 0
         min_distance = float('inf')
-        
         for i, (word, start, end) in enumerate(words):
-            # Check both before and after this word
             distances = [
-                (abs(start - target_char), start),  # before word
-                (abs(end - target_char), end)       # after word
+                (abs(start - target_char), start),
+                (abs(end - target_char), end)
             ]
-            
             for distance, pos in distances:
                 if distance < min_distance:
                     min_distance = distance
                     best_insert = pos
-        
         return best_insert
 
     def insert_tag_with_smart_spacing(text: str, pos: int, tag: str) -> str:
-        """
-        Insert tag with intelligent spacing to avoid collisions.
-        """
         if pos <= 0:
-            # Insert at beginning
             if text and text[0].isalnum():
                 return tag + ' ' + text
             return tag + text
         elif pos >= len(text):
-            # Insert at end  
             if text and text[-1].isalnum():
                 return text + ' ' + tag
             return text + tag
         else:
-            # Insert in middle
             before_char = text[pos-1] if pos > 0 else ' '
             after_char = text[pos] if pos < len(text) else ' '
-            
             space_before = ' ' if before_char.isalnum() else ''
             space_after = ' ' if after_char.isalnum() else ''
-            
             return text[:pos] + space_before + tag + space_after + text[pos:]
 
-    # Get original text length for relative positioning
     original_total_len = max([pos for _, _, pos in ph_map] + [len(translated)]) if ph_map else len(translated)
-    
     for _placeholder, original, pos in missing:
         insert_at = find_optimal_insertion_point(out, pos, original_total_len)
+        with open("tag_debug.log", "a", encoding="utf-8") as dbg:
+            dbg.write(f"    Reinserting tag {original} at pos {insert_at} in: {repr(out)}\n")
         out = insert_tag_with_smart_spacing(out, insert_at, original)
 
+    # Remove duplicate tags of the same type at the start of the line
+    def dedup_leading_tags(text):
+        # e.g., {\pos...}{\pos...} or {\an8}{\an8}
+        tag_pat = r'(\{\\[a-zA-Z0-9]+[^}]*})'
+        tags = re.findall(tag_pat, text)
+        seen = set()
+        deduped = ''
+        rest = text
+        for tag in tags:
+            ttype = tag_type(tag)
+            if ttype and ttype not in seen:
+                deduped += tag
+                seen.add(ttype)
+                rest = rest[len(tag):]
+            elif ttype:
+                rest = rest[len(tag):]
+            else:
+                break
+        return deduped + rest.lstrip()
+    out = dedup_leading_tags(out)
+
     # Remove any leftover placeholders like <TAGPH_0>, < TAGPH_0>, etc.
-    out = re.sub(r'<\s*TAGPH_\d+\s*>?', '', out)  # Remove all <TAGPH_n> variants with optional spaces and optional closing '>'
+    out = re.sub(r'<\s*TAGPH_\d+\s*>', '', out)
+    out = re.sub(r'<\s*TAGPH_\d+>', '', out)
+    out = re.sub(r'<\s*TAGPH_\d+\s*>', '', out)
+    with open("tag_debug.log", "a", encoding="utf-8") as dbg:
+        dbg.write(f"  Output: {repr(out)}\n")
     return out
 
 

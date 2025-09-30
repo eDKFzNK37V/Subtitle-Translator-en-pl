@@ -189,7 +189,7 @@ def translate_with_context_nllb(
     - Applies glossary pre-translation.
     - Respects polish_only flag.
     """
-    from pipeline import apply_glossary, GLOSSARY
+    from polish_morphology import enhance_polish_conjugation
     from text_tools import group_dialogue_lines, split_grouped_translations
     model_setup()
 
@@ -198,7 +198,8 @@ def translate_with_context_nllb(
         out = []
         for line in lines:
             clean, ph_map = extract_tags_with_placeholders(line)
-            clean = apply_glossary(clean, glossary)
+            if tgt_lang.lower() == "pl":
+                clean = enhance_polish_conjugation(clean)
             out.append(restore_tags_from_placeholders(clean, ph_map))
         if translation_callback:
             for i in range(1, total + 1):
@@ -213,7 +214,8 @@ def translate_with_context_nllb(
     grouped_ph_maps = []
     for group in grouped_lines:
         clean, ph_map = extract_tags_with_placeholders(group)
-        clean = apply_glossary(clean, glossary)
+        if tgt_lang.lower() == "pl":
+            clean = enhance_polish_conjugation(clean)
         grouped_clean.append(clean)
         grouped_ph_maps.append(ph_map)
 
@@ -288,12 +290,13 @@ def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translatio
     # Group dialogue lines for context preservation
     grouped_lines, group_map = group_dialogue_lines(lines)
     
+    from text_tools import force_preserve_names
     grouped_corrected = []
     for group_idx, group in enumerate(grouped_lines):
         try:
             # Step 1: Neural grammar correction with confidence scoring/fallback
             corrected_group = correct_grammar_with_fallback(group, confidence_threshold=0.9)
-            
+
             # Step 2: LanguageTool correction with timeout (following architecture)
             if tgt_lang.lower() == "pl":
                 try:
@@ -307,15 +310,18 @@ def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translatio
                     corrected_group = language_tool_python.utils.correct(corrected_group, matches)
                 except Exception:
                     pass  # Skip on timeout/error
-            
+
             # Step 3: Style/tone adjustment for subtitles (following architecture)
             corrected_group = adjust_subtitle_style_tone(corrected_group, tgt_lang)
-            
+
             # Step 4: Final cleanup
             corrected_group = clean_translation(corrected_group)
-            
+
+            # Step 5: Force preservation of names/unknown words
+            corrected_group = force_preserve_names(group, corrected_group)
+
             grouped_corrected.append(corrected_group)
-            
+
         except Exception as e:
             # Fallback to original on any error
             grouped_corrected.append(group)
@@ -532,12 +538,12 @@ def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=
 
     return translated
 
-def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "", quality_mode: str = "balanced") -> str:
+def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "", quality_mode: str = "Balanced") -> str:
     """
     Enhanced quality improvement with configurable processing intensity and Polish morphology support.
     
     Parameters:
-        quality_mode: "conservative" (minimal changes), "balanced" (default), "aggressive" (more changes)
+        quality_mode: "Conservative" (minimal changes), "Balanced" (default), "Aggressive" (more changes)
     """
     if not translated_text.strip():
         return translated_text
@@ -553,7 +559,7 @@ def _enhance_translation_quality(translated_text: str, target_lang: str, source_
         enhanced = enhanced[0].upper() + enhanced[1:]
     
     # Additional processing based on quality mode
-    if quality_mode == "aggressive":
+    if quality_mode == "Aggressive":
         # More thorough processing for quality preset
         enhanced = re.sub(r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), enhanced)
         # Fix common translation artifacts
@@ -568,12 +574,12 @@ def _enhance_translation_quality(translated_text: str, target_lang: str, source_
             except ImportError:
                 # Fallback to basic Polish improvements if module not available
                 enhanced = _basic_polish_improvements(enhanced)
-                
-    elif quality_mode == "conservative":
+
+    elif quality_mode == "Conservative":
         # Minimal processing for speed preset - just basic cleanup
         pass
-    # "balanced" uses the default processing above
-    
+    # "Balanced" uses the default processing above
+
     return enhanced.strip()
 
 def _basic_polish_improvements(text: str) -> str:

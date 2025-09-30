@@ -23,7 +23,9 @@ Options:
     --length-penalty F    Length penalty (default: 1.0, range: 0.1-2.0)
     --temperature F       Temperature for sampling (default: 1.0, range: 0.1-2.0)
     --sampling            Enable sampling mode (uses temperature)
+
     --batch-size N        Batch size (default: 12, range: 1-32)
+    --quality MODE        Translation quality mode: balanced (default), aggressive, conservative
     --no-grammar          Disable grammar correction
 
 Examples:
@@ -32,7 +34,9 @@ Examples:
     python main.py example.ass --beams 5 --length-penalty 1.2  # Higher quality
     python main.py example.ass --beams 1 --batch-size 16       # Faster
     python main.py example.ass --sampling --temperature 1.3    # More creative
+
     python main.py example.ass --no-grammar                    # Skip grammar correction
+    python main.py example.ass --quality aggressive            # Use aggressive quality mode
 
 If you are not sure, just run: python main.py
 """)
@@ -69,6 +73,7 @@ def main():
     parser.add_argument("--temperature", default=1.0, type=float, help="Temperature for sampling (default: 1.0, range: 0.1-2.0)")
     parser.add_argument("--sampling", action="store_true", help="Enable sampling mode (uses temperature)")
     parser.add_argument("--batch-size", default=12, type=int, help="Batch size for translation (default: 12, range: 1-32)")
+    parser.add_argument("--quality", default="balanced", choices=["balanced", "aggressive", "conservative"], help="Translation quality mode: balanced (default), aggressive, conservative")
     parser.add_argument("--no-grammar", action="store_true", help="Disable grammar correction")
     parser.add_argument("-h", "--help", action="store_true", help="Show this help message and exit")
     args = parser.parse_args()
@@ -144,7 +149,7 @@ def main():
         
         # Translation phase with user parameters
         print(f"Translating {len(grouped_lines)} grouped lines...")
-        print(f"Parameters: beams={args.beams}, length_penalty={args.length_penalty}, temperature={args.temperature}, sampling={args.sampling}")
+        print(f"Parameters: beams={args.beams}, length_penalty={args.length_penalty}, temperature={args.temperature}, sampling={args.sampling}, quality_mode={args.quality}")
         translated_groups = translate_with_context_nllb(
             grouped_lines,
             args.src,
@@ -157,7 +162,8 @@ def main():
             translation_callback=create_translation_callback("translation"),
             length_penalty=args.length_penalty,
             temperature=args.temperature,
-            do_sample=args.sampling
+            do_sample=args.sampling,
+            quality_mode=args.quality
         )
         
         # Split translations back to original lines (same as GUI)

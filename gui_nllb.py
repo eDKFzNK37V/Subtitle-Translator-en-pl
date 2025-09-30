@@ -14,11 +14,10 @@ model, tokenizer, device = get_nllb_globals()
 
 
 def run_gui_nllb():
+
     import tkinter as tk
     root = tk.Tk()
     root.title("Subtitle Translator (NLLB)")
-
-    
     # TODO: Implement NLLB-specific GUI logic here
 
     # ─── Variables ───────────────────────────────────────────────────────────────
@@ -234,7 +233,7 @@ def run_gui_nllb():
              bg="lightgreen", width=8).pack(side=tk.LEFT, padx=2)
     tk.Button(preset_frame, text="Creative", command=lambda: apply_preset("creative"), 
              bg="lightyellow", width=8).pack(side=tk.LEFT, padx=2)
-    
+
     # Reset to defaults button
     def reset_parameters():
         num_beams_var.set(3)
@@ -245,17 +244,16 @@ def run_gui_nllb():
         enable_grammar_var.set(True)
         top_k_var.set(50)
         top_p_var.set(0.9)
-    
+
     tk.Button(preset_frame, text="Reset", command=reset_parameters, 
              bg="lightcoral", width=8).pack(side=tk.LEFT, padx=2)
-    
+
     # Help button
     def show_help():
         help_window = tk.Toplevel(root)
         help_window.title("Translation Parameters Help")
         help_window.geometry("600x500")
         help_window.resizable(True, True)
-        
         help_text = """
 🚀 ENHANCED TRANSLATION PARAMETERS GUIDE
 
@@ -316,21 +314,28 @@ def run_gui_nllb():
 • Longer sentences benefit from higher length penalties
 • Use Creative preset for more natural, conversational Polish
         """
-        
         text_widget = tk.Text(help_window, wrap=tk.WORD, font=("Arial", 10), padx=10, pady=10)
         text_widget.insert(tk.END, help_text)
         text_widget.config(state=tk.DISABLED)
-        
         scrollbar = tk.Scrollbar(help_window, command=text_widget.yview)
         text_widget.config(yscrollcommand=scrollbar.set)
-        
         text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
         tk.Button(help_window, text="Close", command=help_window.destroy).pack(pady=10)
-    
+
     tk.Button(preset_frame, text="Help", command=show_help, 
              bg="lightsteelblue", width=8).pack(side=tk.LEFT, padx=2)
+
+    # Quality dropdown in its own frame directly under preset_frame
+    QUALITY_OPTIONS = ["Balanced", "Aggressive", "Conservative"]
+    quality_mode_var = tk.StringVar(value="Balanced")
+    quality_frame = tk.Frame(advanced_frame)
+    quality_frame.grid(row=9, column=0, columnspan=3, sticky="ew", pady=(0, 5))
+    tk.Label(quality_frame, text="Quality Mode:").pack(side=tk.LEFT, padx=(0,0))
+    quality_menu = tk.OptionMenu(quality_frame, quality_mode_var, *QUALITY_OPTIONS)
+    quality_menu.pack(side=tk.LEFT)
+    
+   
 
     # ─── Progress & Status ────────────────────────────────────────────────────────
     progress_var = tk.DoubleVar(value=0)
@@ -630,14 +635,8 @@ def run_gui_nllb():
         controller.start(total_lines)
 
         try:
-            # Determine quality mode based on parameters
-            if num_beams_var.get() >= 7:  # Quality preset
-                quality_mode = "aggressive"
-            elif num_beams_var.get() <= 1:  # Speed preset  
-                quality_mode = "conservative"
-            else:
-                quality_mode = "balanced"
-                
+            # Use the selected quality mode from the dropdown
+            selected_quality_mode = quality_mode_var.get()
             # Translate grouped lines with user-selected parameters
             translated_groups = translate_with_context_nllb(
                 grouped_lines,
@@ -655,7 +654,7 @@ def run_gui_nllb():
                 do_sample=do_sample_var.get(),
                 top_k=top_k_var.get(),
                 top_p=top_p_var.get(),
-                quality_mode=quality_mode
+                quality_mode=selected_quality_mode
             )
             # Split translations back to original lines
             translated = split_grouped_translations(translated_groups, group_map)
