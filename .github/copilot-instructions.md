@@ -2,52 +2,52 @@
 
 ## Architecture & Data Flow
 
-- **CLI entry:** `main.py` (also launches GUI if no file provided)
-- **GUI entry:** `main_gui.py` → `gui.py`, `gui_nllb.py`, `gui_m2m100.py`
-- **Core pipeline:** `subtitle_workflow.py` (translation, correction, tag handling)
-- **Batch/context-aware processing:** `pipeline.py` (calls `subtitle_workflow.py`)
-- **Utilities:** `text_tools.py` (tag utils, dialogue grouping), `logs.py`, `resources.py`, `config.py`, `utils.py`
+- **Entry point:** `main.py` (runs GUI by default)
+- **GUI logic:** `gui.py` (Tkinter-based, all user interaction and progress callbacks)
+- **Core pipeline:** `subtitle_workflow.py` (orchestrates translation, correction, tag handling)
+- **Translation/correction:** `translate.py`, `pipeline.py`, `text_tools.py` (batch translation, grammar, punctuation, tag extraction/restoration)
+- **Model loading:** `models.py` (HuggingFace Transformers, PyTorch)
+- **Subtitle I/O:** `utils.py` (encoding detection, subtitle/text read/write)
+- **Logging:** `logs.py` (per-line and summary logs, diff/diacritics tracking)
 
 **Data Flow:**
 
-1. Load subtitle (`subtitle_workflow.py`)
-2. Preprocess: extract `\N` tags (`text_tools.py: extract_newline_tags`), extract tag placeholders (`extract_tags_with_placeholders`)
-3. Group dialogue lines (`group_dialogue_lines`)
-4. Translate (model via `models.py`, glossary via `resources.py`)
-5. Post-process: restore tags (`restore_tags_from_placeholders`), grammar correction (`correct_grammar_with_fallback`), style/tone (`adjust_subtitle_style_tone`), reinsert `\N` (`insert_newline_tags_contextaware`), save output
+1. Load subtitle/text lines (`utils.py:load_subtitle_lines`)
+2. Preprocess: extract tags (`text_tools.py:extract_tags`), remove/restore formatting
+3. Translate/correct in batch (`translate.py:translate_batch`, `pipeline.py:correct_text_batch`)
+4. Restore tags, reformat, and save (`utils.py:save_subtitle_lines`)
+5. Log changes (`logs.py:SubtitleLogger`)
 
 ## Developer Workflows
 
-- **Run GUI:** `python main.py` (no args) or `python main_gui.py`
-- **Run CLI:** `python main.py <input_file>`
+- **Run GUI:** `python main.py` or `run_main.bat`
 - **Activate env:** `subtitle-env\Scripts\activate` (PowerShell)
-- **Install deps:** `pip install -r requirements.txt` (then install torch as instructed)
-- **Test core:** `python test_core_functions.py` (if present)
-- **Integration demo:** `python demo_integration.py` (if present)
+- **Install deps:** `pip install -r requirements.txt` (install torch separately for CUDA/CPU)
+- **Test translation logic:** `python test_translate_ass.py` (if present)
+- **Debug pipeline:** Add print/logs in `subtitle_workflow.py`, `gui.py`, or `logs.py`
 
-## Key Files & Patterns
+## Project-Specific Patterns & Conventions
 
-- Tag handling: always remove `\N` before translation, reinsert after; use placeholder-based tag extraction/restoration for all tags
-- Dialogue grouping: use `group_dialogue_lines`/`split_grouped_translations` for context-aware translation
-- Correction: use `correct_grammar_with_fallback` (confidence threshold ≥0.6); apply glossary with `apply_glossary(text, use_context=True)`
-- Style/tone: use `adjust_subtitle_style_tone` for subtitle-optimized output
-- Model integration: all models loaded via `models.py:get_nllb_globals`
-- Logging/progress: via `logs.py` and `progress_controller.py`
-- Config: in `config.py`; thresholds in `pipeline.py`
+- **Tag handling:** Always extract tags (e.g., `{\pos(320,240)}`) before translation, restore after. See `text_tools.py:extract_tags`, `restore_tags`.
+- **Formatting preservation:** For `.txt` files, preserve leading/trailing whitespace and newlines (see `gui.py:review_txt_translations`).
+- **Batch processing:** All translation/correction is done in batches for speed and context (see `translate.py:translate_batch`, `pipeline.py:correct_text_batch`).
+- **Logging:** Use `logs.py:SubtitleLogger` for per-line and summary logs, including word diffs and diacritics.
+- **Model/device config:** All models use `config.py:DEVICE` for CPU/GPU selection.
+- **Supported formats:** `.ass`, `.srt`, `.txt` only (see `utils.py:load_subtitle_lines`).
 
-## External Dependencies
+## Integration & Dependencies
 
-- HuggingFace Transformers (translation/grammar)
-- PyTorch (neural models, install torch separately for CUDA/CPU)
-- LanguageTool Python (grammar)
+- HuggingFace Transformers (translation, grammar, punctuation)
+- PyTorch (neural models)
+- LanguageTool Python (grammar correction)
 - pysubs2 (subtitle parsing)
 - Tkinter (GUI)
 
 ## Example Usage
 
 - Translate: `python main.py example.srt`
-- GUI: `python main.py`
-- Tag/\N handling:
+- GUI: `python main.py` or `run_main.bat`
+- Tag handling:
   - Input: `Hello,\Nworld! {\pos(320,240)}`
   - After extraction: `Hello, world!`
   - After translation: `Cześć, świecie!`
@@ -55,9 +55,8 @@
 
 ## Troubleshooting
 
-- Model/language code errors: see `subtitle_workflow.py`, `models.py`
-- Tag placement: see `text_tools.py`
-- Dialogue grouping: see `group_dialogue_lines` in `text_tools.py`
-- Correction quality: see fallback logic in `pipeline.py`
-- Performance: adjust thresholds/timeouts in `pipeline.py`
-- See `README.md` and code comments for more
+- Model/language errors: see `subtitle_workflow.py`, `models.py`
+- Tag/formatting issues: see `text_tools.py`, `gui.py`
+- Logging: see `logs.py`
+- Encoding: see `utils.py:_detect_encoding`
+- For more, see `README.md` and code comments
