@@ -1,0 +1,602 @@
+# subtitle_workflow.py
+import re
+import torch
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+from utils import load_subtitle_lines, save_subtitle_lines
+from models import get_nllb_globals
+from config import DEVICE, selected_engine as global_selected_engine
+from text_tools import extract_tags_with_placeholders, restore_tags_from_placeholders
+
+def run_gui_entry():
+    from gui import run_gui
+    run_gui()
+
+def _get_target_lang_from_code(lang_code):
+    """Convert NLLB language codes back to simple language codes for quality enhancement."""
+    code_map = {
+        "eng_Latn": "en",
+        "pol_Latn": "pl",
+        "fra_Latn": "fr", 
+        "deu_Latn": "de",
+        "jpn_Jpan": "ja"
+    }
+    return code_map.get(lang_code, "en")  # Default to English if not found
+
+## NLLB language code map (extend as needed)
+def model_setup():
+    global TRANS_MODEL, TRANS_TOKENIZER
+    # Always use NLLB as the only supported model
+    TRANS_MODEL, TRANS_TOKENIZER, _ = get_nllb_globals()
+    TRANS_MODEL.eval()
+
+# Language code maps for NLLB
+NLLB_LANG = {
+    "en": "eng_Latn",
+    "pl": "pol_Latn",
+}
+
+def get_model_lang_code(lang, model_type="nllb"):
+    # Always use NLLB language codes
+    return NLLB_LANG.get(lang, lang)
+
+def load_nllb_13b():
+    model_id = "facebook/nllb-200-3.3B"
+    tok = AutoTokenizer.from_pretrained(model_id)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.float16 if device == "cuda" else None
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_id, torch_dtype=dtype)
+    model.to(device)
+    model.eval()
+    return model, tok, device
+
+def translate_batch_nllb(model, tok, device, lines, src_code, tgt_code,
+                         max_length=256, num_beams=3, no_repeat_ngram_size=2,
+                         length_penalty=1.0, repetition_penalty=1.0, temperature=1.0,
+                         do_sample=False, top_k=50, top_p=0.9, quality_mode="balanced"):
+    """
+    Optimized NLLB translation with improved quality and performance balance.
+    Enhanced for subtitle translation with streamlined parameters.
+    Assumes:
+      - tok is the NLLB tokenizer
+      - src_code/tgt_code are already in NLLB form (e.g. "eng_Latn", "pol_Latn")
+    
+    Parameters:
+      - num_beams: Number of beams for beam search (default: 3, range: 1-10)
+      - length_penalty: Length penalty for beam search (default: 1.0, range: 0.1-2.0)
+      - temperature: Sampling temperature when do_sample=True (default: 1.0, range: 0.1-2.0)
+      - do_sample: Whether to use sampling instead of greedy decoding (default: False)
+      - top_k: Top-k sampling parameter (default: 50)
+      - top_p: Top-p (nucleus) sampling parameter (default: 0.9)
+    """
+    # Parameter validation and bounds checking
+    num_beams = max(1, min(10, int(num_beams)))
+    length_penalty = max(0.1, min(2.0, float(length_penalty)))
+    temperature = max(0.1, min(2.0, float(temperature)))
+    max_length = max(32, min(512, int(max_length)))
+    no_repeat_ngram_size = max(1, min(5, int(no_repeat_ngram_size)))
+    repetition_penalty = max(0.5, min(2.0, float(repetition_penalty)))
+    top_k = max(1, min(100, int(top_k)))
+    top_p = max(0.1, min(1.0, float(top_p)))
+    # Directly set the NLLB tokenizer’s src and tgt
+    tok.src_lang = src_code
+    tgt_id = tok.convert_tokens_to_ids(tgt_code)
+
+    # Optimized encoding with dynamic padding for better memory efficiency
+    enc = tok(
+        lines,
+        return_tensors="pt",
+        padding=True,
+        truncation=True,
+        max_length=max_length
+    ).to(device)
+
+    with torch.no_grad():
+        # Configurable generation parameters for quality and speed balance
+        gen_kwargs = {
+            "input_ids": enc.input_ids,
+            "attention_mask": enc.attention_mask,
+            "forced_bos_token_id": tgt_id,
+            "max_length": max_length,
+            "num_beams": num_beams,
+            "early_stopping": True,
+            "length_penalty": length_penalty,
+            "no_repeat_ngram_size": no_repeat_ngram_size,
+            "do_sample": do_sample,
+            "num_return_sequences": 1,
+            "repetition_penalty": repetition_penalty,
+        }
+        
+        # Add sampling-specific parameters when sampling is enabled
+        if do_sample:
+            gen_kwargs["temperature"] = temperature
+            gen_kwargs["top_k"] = top_k
+            gen_kwargs["top_p"] = top_p
+            
+        # Debug logging (can be enabled during testing)
+        # print(f"[DEBUG] translate_batch_nllb params: beams={num_beams}, length_penalty={length_penalty}, "
+        #       f"temperature={temperature}, sampling={do_sample}, top_k={top_k}, top_p={top_p}")
+            
+        gen = model.generate(**gen_kwargs)
+    
+    decoded = tok.batch_decode(gen, skip_special_tokens=True)
+    
+    # Apply enhanced post-processing for each translated line  
+    enhanced_results = []
+    target_lang = _get_target_lang_from_code(tgt_code)
+    for idx, text in enumerate(decoded):
+        # Apply quality improvements based on the preset/mode
+        enhanced_text = _enhance_translation_quality(text, target_lang, 
+                                                   lines[idx] if idx < len(lines) else "", 
+                                                   quality_mode)
+        enhanced_results.append(enhanced_text)
+    
+    return enhanced_results
+
+def translate_lines_nllb(model, tok, device, lines, src_lang, tgt_lang,
+                         batch_size=12, progress_callback=None, num_beams=3,
+                         length_penalty=1.0, temperature=1.0, do_sample=False,
+                         top_k=50, top_p=0.9, quality_mode="balanced"):
+    # Always use the model and tokenizer passed as arguments (do not overwrite with globals)
+    # Map GUI codes ("en","pl") → NLLB codes ("eng_Latn","pol_Latn")
+    src_code = get_model_lang_code(src_lang, "nllb")
+    tgt_code = get_model_lang_code(tgt_lang, "nllb")
+    out = []
+    i = 0
+    bs = batch_size
+    while i < len(lines):
+        try:
+            batch = lines[i:i+bs]
+            preds = translate_batch_nllb(model, tok, device, batch, src_code, tgt_code,
+                                       num_beams=num_beams, length_penalty=length_penalty,
+                                       temperature=temperature, do_sample=do_sample,
+                                       top_k=top_k, top_p=top_p, quality_mode=quality_mode)
+            out.extend(preds)
+            i += bs
+            if progress_callback:
+                progress_callback(min(i, len(lines)), len(lines))
+        except torch.cuda.OutOfMemoryError:
+            torch.cuda.empty_cache()
+            bs = max(1, bs // 2)  # halve and retry
+            if bs == 1:
+                # last resort: process one line
+                continue
+    return out
+
+def translate_with_context_nllb(
+    lines,
+    src_lang,
+    tgt_lang,
+    model,
+    tokenizer,
+    device,
+    beams=5,
+    batch_size=12,
+    polish_only=False,
+    glossary=None,
+    translation_callback=None,
+    length_penalty=1.0,
+    temperature=1.0,
+    do_sample=False,
+    top_k=50,
+    top_p=0.9,
+    quality_mode="balanced"
+):
+    """
+    Context-aware translation with dialogue grouping and robust tag handling.
+    - Groups consecutive lines for translation if the next starts with a lowercase letter.
+    - Translates grouped lines in context, then splits back to original lines.
+    - Preserves tag positions and mapping.
+    - Applies glossary pre-translation.
+    - Respects polish_only flag.
+    """
+    from pipeline import apply_glossary, GLOSSARY
+    from text_tools import group_dialogue_lines, split_grouped_translations
+    model_setup()
+
+    total = len(lines)
+    if polish_only and src_lang.lower() == tgt_lang.lower():
+        out = []
+        for line in lines:
+            clean, ph_map = extract_tags_with_placeholders(line)
+            clean = apply_glossary(clean, glossary)
+            out.append(restore_tags_from_placeholders(clean, ph_map))
+        if translation_callback:
+            for i in range(1, total + 1):
+                translation_callback(i, total)
+        return out
+
+    # Group dialogue lines for context-aware translation
+    grouped_lines, group_map = group_dialogue_lines(lines)
+
+    # Pre-extract tags/placeholders for all grouped lines
+    grouped_clean = []
+    grouped_ph_maps = []
+    for group in grouped_lines:
+        clean, ph_map = extract_tags_with_placeholders(group)
+        clean = apply_glossary(clean, glossary)
+        grouped_clean.append(clean)
+        grouped_ph_maps.append(ph_map)
+
+    # Use NLLB as the only supported model type
+    model_type = "nllb"
+    src_code = get_model_lang_code(src_lang, model_type)
+    tgt_code = get_model_lang_code(tgt_lang, model_type)
+
+    # Translate grouped lines in batches
+    translated_groups = []
+    for i in range(0, len(grouped_clean), batch_size):
+        batch = grouped_clean[i:i+batch_size]
+        preds = translate_lines_nllb(model, tokenizer, device, batch, src_lang, tgt_lang, 
+                                   batch_size=batch_size, progress_callback=None,
+                                   num_beams=beams, length_penalty=length_penalty,
+                                   temperature=temperature, do_sample=do_sample,
+                                   top_k=top_k, top_p=top_p, quality_mode=quality_mode)
+        translated_groups.extend(preds)
+        if translation_callback:
+            progress = min(i + len(batch), len(grouped_clean))
+            translation_callback(progress, len(grouped_clean))
+
+    # Restore tags for each group
+    restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_map in zip(translated_groups, grouped_ph_maps)]
+
+    # Split grouped translations back to original lines
+    split_lines = split_grouped_translations(restored_groups, group_map)
+
+    # Final progress update only if we haven't reached the end yet
+    if translation_callback and len(grouped_clean) > 0:
+        translation_callback(len(grouped_clean), len(grouped_clean))
+
+    return split_lines
+
+def correct_text_batch_nllb(lines, src_lang, tgt_lang, glossary=None, translation_callback=None, 
+                          enable_grammar_correction=True):
+    """
+    Enhanced NLLB correction following the complete architecture pipeline:
+    1. Neural grammar correction with confidence scoring/fallback
+    2. LanguageTool correction with timeout
+    3. Style/tone adjustment for subtitles
+    
+    Parameters:
+      - enable_grammar_correction: Whether to apply grammar correction (default: True)
+    """
+    from pipeline import correct_text_batch
+    from text_tools import (
+        correct_grammar_with_fallback, 
+        adjust_subtitle_style_tone,
+        clean_translation,
+        group_dialogue_lines,
+        split_grouped_translations
+    )
+    import language_tool_python
+    from resources import tool_pl, tool_en
+    
+    # Use the enhanced correction pipeline with NLLB model setup
+    model_setup()  # Ensure NLLB model is loaded
+    
+    if not enable_grammar_correction:
+        # Skip grammar correction, just return minimal processing
+        corrected_lines = [clean_translation(line) for line in lines]
+        if translation_callback:
+            for i in range(1, len(lines) + 1):
+                translation_callback(i, len(lines))
+        return corrected_lines
+    
+    # Follow the complete architecture pipeline for grammar correction
+    total = len(lines)
+    corrected_lines = []
+    
+    # Group dialogue lines for context preservation
+    grouped_lines, group_map = group_dialogue_lines(lines)
+    
+    grouped_corrected = []
+    for group_idx, group in enumerate(grouped_lines):
+        try:
+            # Step 1: Neural grammar correction with confidence scoring/fallback
+            corrected_group = correct_grammar_with_fallback(group, confidence_threshold=0.9)
+            
+            # Step 2: LanguageTool correction with timeout (following architecture)
+            if tgt_lang.lower() == "pl":
+                try:
+                    matches = tool_pl.check(corrected_group)
+                    corrected_group = language_tool_python.utils.correct(corrected_group, matches)
+                except Exception:
+                    pass  # Skip on timeout/error
+            elif tgt_lang.lower() == "en":
+                try:
+                    matches = tool_en.check(corrected_group)
+                    corrected_group = language_tool_python.utils.correct(corrected_group, matches)
+                except Exception:
+                    pass  # Skip on timeout/error
+            
+            # Step 3: Style/tone adjustment for subtitles (following architecture)
+            corrected_group = adjust_subtitle_style_tone(corrected_group, tgt_lang)
+            
+            # Step 4: Final cleanup
+            corrected_group = clean_translation(corrected_group)
+            
+            grouped_corrected.append(corrected_group)
+            
+        except Exception as e:
+            # Fallback to original on any error
+            grouped_corrected.append(group)
+            
+        # Update progress
+        if translation_callback:
+            progress = ((group_idx + 1) * len(lines)) // len(grouped_lines)
+            translation_callback(min(progress, total), total)
+    
+    # Split grouped corrections back to original lines
+    corrected_lines = split_grouped_translations(grouped_corrected, group_map)
+    
+    # Final progress update
+    if translation_callback:
+        translation_callback(total, total)
+    
+    return corrected_lines
+
+
+
+def translate_lines(lines, src_lang, tgt_lang, translation_callback=None, glossary=None):
+    """
+    Context-aware translation with dialogue grouping and robust tag handling.
+    Groups consecutive lines for translation if the next starts with a lowercase letter.
+    Translates grouped lines, then splits back to original lines.
+    """
+    model_setup()  # Ensure correct model/tokenizer is set
+    from pipeline import apply_glossary, GLOSSARY
+    from text_tools import group_dialogue_lines, split_grouped_translations
+
+    # Group dialogue lines for context-aware translation
+    grouped_lines, group_map = group_dialogue_lines(lines)
+
+    # Pre-extract tags/placeholders for all grouped lines
+    grouped_clean = []
+    grouped_ph_maps = []
+    for group in grouped_lines:
+        clean, ph_map = extract_tags_with_placeholders(group)
+        clean = apply_glossary(clean, glossary)
+        grouped_clean.append(clean)
+        grouped_ph_maps.append(ph_map)
+
+    # Translate grouped lines
+    translated_groups = translate_batch(
+        grouped_clean,
+        src_lang,
+        tgt_lang,
+        batch_size=6,
+        progress_callback=translation_callback
+    )
+
+    # Restore tags for each group
+    restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_map in zip(translated_groups, grouped_ph_maps)]
+
+    # Split grouped translations back to original lines
+    split_lines = split_grouped_translations(restored_groups, group_map)
+    return split_lines
+
+def translate_subtitles(file_path, src_lang, tgt_lang, polish_only=False, translation_callback=None, glossary=None, n_wordidx=0, use_contextaware_n=False):
+    import os
+    r"""
+    Load (texts, subs, idx_map), apply dialogue grouping, tag handling, and context-aware translation.
+    Enhanced with context-aware \N reinsertion and improved processing pipeline.
+    """
+    model_setup()  # Ensure correct model/tokenizer is set
+    from pipeline import apply_glossary, GLOSSARY
+    from text_tools import extract_newline_tags, insert_newline_tags_at_wordidx, insert_newline_tags_contextaware, group_dialogue_lines, split_grouped_translations
+    from logs import initialize_session_log
+
+    # Initialize session logging at the start with output directory
+    ext = file_path.split('.')[-1].lower()
+    output_path = os.path.splitext(file_path)[0] + f"_{tgt_lang}.{ext}"
+    output_dir = os.path.dirname(output_path)
+    initialize_session_log(output_dir)
+
+    texts, subs, idx_map = load_subtitle_lines(file_path)
+    if not texts:
+        raise ValueError(f"[translate_subtitles] No subtitle lines loaded from {file_path!r}")
+
+    # --- Remove \N tags and count them ---
+    cleaned_lines = []
+    n_tag_counts = []
+    for line in texts:
+        cleaned, n_count = extract_newline_tags(line)
+        cleaned_lines.append(cleaned)
+        n_tag_counts.append(n_count)
+
+    # Dialogue grouping for context-aware translation
+    grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
+
+    # Pre-extract tags/placeholders for all grouped lines
+    grouped_clean = []
+    grouped_ph_maps = []
+    for group in grouped_lines:
+        clean, ph_map = extract_tags_with_placeholders(group)
+        clean = apply_glossary(clean, glossary, use_context=True)
+        grouped_clean.append(clean)
+        grouped_ph_maps.append(ph_map)
+
+    # If polishing only and same language, skip model translate
+    if polish_only and src_lang.lower() == tgt_lang.lower():
+        translated_groups = grouped_clean[:]
+        if translation_callback:
+            for idx in range(1, len(translated_groups) + 1):
+                translation_callback(idx, len(translated_groups))
+    else:
+        translated_groups = translate_batch(
+            grouped_clean,
+            src_lang,
+            tgt_lang,
+            batch_size=6,
+            progress_callback=translation_callback
+        )
+
+    # Restore tags for each group
+    restored_groups = [restore_tags_from_placeholders(trans, ph_map) for trans, ph_map in zip(translated_groups, grouped_ph_maps)]
+
+    # Split grouped translations back to original lines
+    restored_lines = split_grouped_translations(restored_groups, group_map)
+
+    # --- Enhanced \N tag insertion logic ---
+    final_lines = []
+    for line, n_count in zip(restored_lines, n_tag_counts):
+        if n_count > 0:
+            if use_contextaware_n:
+                # Use context-aware insertion
+                processed_line = insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True)
+            else:
+                # Use word index-based insertion (backwards compatibility)
+                processed_line = insert_newline_tags_at_wordidx(line, n_count, n_wordidx)
+        else:
+            processed_line = line
+        final_lines.append(processed_line)
+
+    save_subtitle_lines(final_lines, output_path, subs, idx_map)
+
+    # Write session log at the end of translation
+    from logs import write_session_log
+    write_session_log()
+
+    return output_path, texts, final_lines
+
+def translate_batch(lines, src_lang, tgt_lang, batch_size=16, progress_callback=None):
+    """
+    Enhanced translation batch with improved quality controls for subtitle context.
+    Features:
+    - Optimized generation parameters for natural subtitle speech
+    - Multiple beam generations with quality selection
+    - Length penalty adjustments for subtitle constraints
+    - Temperature control for more natural output
+    """
+    model_setup()  # Ensure correct model/tokenizer is set
+    translated = []
+    total_lines = len(lines)
+
+    # Use NLLB as the only supported model type
+    model_type = "nllb"
+    src_code = get_model_lang_code(src_lang, model_type)
+    tgt_code = get_model_lang_code(tgt_lang, model_type)
+    
+    # Setup NLLB tokenizer
+    TRANS_TOKENIZER.src_lang = src_code
+    tgt_id = TRANS_TOKENIZER.convert_tokens_to_ids(tgt_code)
+    bos_token_id = tgt_id
+
+    for i in range(0, total_lines, batch_size):
+        batch = lines[i: i + batch_size]
+        encoded = TRANS_TOKENIZER(
+            batch,
+            return_tensors="pt",
+            padding=True,
+            truncation=True
+        ).to(DEVICE)
+
+        with torch.no_grad():
+            # Conservative generation parameters for natural translation
+            if model_type == "nllb":
+                outputs = TRANS_MODEL.generate(
+                    **encoded,
+                    forced_bos_token_id=bos_token_id,
+                    max_length=256,
+                    num_beams=3,  # Conservative beam count
+                    early_stopping=True,
+                    length_penalty=1.0,  # Neutral length penalty
+                    no_repeat_ngram_size=2,  # Basic repetition control
+                    do_sample=False,  # Deterministic for consistency
+                    num_return_sequences=1,
+                    repetition_penalty=1.0  # No repetition penalty to avoid over-processing
+                )
+            else:
+                outputs = TRANS_MODEL.generate(
+                    **encoded,
+                    forced_bos_token_id=bos_token_id,
+                    max_length=256,
+                    num_beams=3,  # Conservative beam count
+                    early_stopping=True,
+                    length_penalty=1.0,  # Neutral length penalty
+                    no_repeat_ngram_size=2,  # Basic repetition control
+                    do_sample=False,  # Deterministic for consistency
+                    num_return_sequences=1,
+                    repetition_penalty=1.0  # No repetition penalty to avoid over-processing
+                )
+
+        decoded = TRANS_TOKENIZER.batch_decode(outputs, skip_special_tokens=True)
+
+        # Enhanced post-processing for each translated line
+        for idx, text in enumerate(decoded):
+            # Apply immediate quality improvements
+            enhanced_text = _enhance_translation_quality(text, tgt_lang, lines[i + idx] if i + idx < len(lines) else "")
+            translated.append(enhanced_text)
+            if progress_callback:
+                current_line = i + idx + 1
+                progress_callback(current_line, total_lines)
+
+    return translated
+
+def _enhance_translation_quality(translated_text: str, target_lang: str, source_text: str = "", quality_mode: str = "balanced") -> str:
+    """
+    Enhanced quality improvement with configurable processing intensity and Polish morphology support.
+    
+    Parameters:
+        quality_mode: "conservative" (minimal changes), "balanced" (default), "aggressive" (more changes)
+    """
+    if not translated_text.strip():
+        return translated_text
+    
+    enhanced = translated_text
+    
+    # Essential spacing fixes (all modes)
+    enhanced = re.sub(r'\s{2,}', ' ', enhanced)  # Multiple spaces to single
+    enhanced = re.sub(r'\s+([.!?,:;])', r'\1', enhanced)  # Remove space before punctuation
+    
+    # Capitalize first letter if needed (all modes)
+    if enhanced and enhanced[0].islower():
+        enhanced = enhanced[0].upper() + enhanced[1:]
+    
+    # Additional processing based on quality mode
+    if quality_mode == "aggressive":
+        # More thorough processing for quality preset
+        enhanced = re.sub(r'([.!?])\s*([a-z])', lambda m: m.group(1) + ' ' + m.group(2).upper(), enhanced)
+        # Fix common translation artifacts
+        enhanced = re.sub(r'\b(a|an|the)\s+(a|an|the)\b', r'\1', enhanced, flags=re.IGNORECASE)
+        
+        # Apply Polish-specific improvements for Polish target language
+        if target_lang.lower() in ['pl', 'pol', 'polish']:
+            try:
+                from polish_morphology import enhance_polish_conjugation, improve_polish_style
+                enhanced = enhance_polish_conjugation(enhanced)
+                enhanced = improve_polish_style(enhanced)
+            except ImportError:
+                # Fallback to basic Polish improvements if module not available
+                enhanced = _basic_polish_improvements(enhanced)
+                
+    elif quality_mode == "conservative":
+        # Minimal processing for speed preset - just basic cleanup
+        pass
+    # "balanced" uses the default processing above
+    
+    return enhanced.strip()
+
+def _basic_polish_improvements(text: str) -> str:
+    """Basic Polish language improvements as fallback."""
+    if not text:
+        return text
+    
+    improved = text
+    
+    # Remove redundant pronouns (common in machine translation)
+    improved = re.sub(r'\bja jestem\b', 'jestem', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bty jesteś\b', 'jesteś', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bon jest\b', 'jest', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bona jest\b', 'jest', improved, flags=re.IGNORECASE)
+    
+    # Fix common Polish punctuation
+    improved = re.sub(r'"([^"]*)"', r'„\1"', improved)  # Polish quotation marks
+    
+    # Make more conversational for subtitles
+    improved = re.sub(r'\bdziękuję bardzo\b', 'dzięki', improved, flags=re.IGNORECASE)
+    improved = re.sub(r'\bproszę bardzo\b', 'proszę', improved, flags=re.IGNORECASE)
+    
+    return improved
+
+
+

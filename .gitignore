@@ -1,57 +1,27 @@
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
+.gitignore
 subtitle-env/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+config.txt
+CUDA-TEST.txt
+gui.txt
+logs.txt
+main.txt
+pipeline.txt
+models.txt
+utils.txt
+progress_controller.txt
+resources.txt
+subtitle_workflow.txt
+text_tools.txt
+advanced_translation.txt
+gui_nllb.txt
+gui_m2m100.txt
+grammar.txt
+system-prompt-llm.md
+error.log
 
-# Virtual environments
-venv/
-ENV/
-env/
-.venv
-
-# PyTorch
-*.pth
-*.pt
-
-# Model cache (HuggingFace)
-models/
-.cache/
-huggingface/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Output files (translated subtitles)
-*_translated.ass
-output*.ass
+# CLI callback test files and logs
+*_log_*.txt
+correction_log*.txt
+test_*.srt
+test_*.ass

@@ -1,0 +1,38 @@
+ERROR:root:
+[ERROR] RuntimeError: Too early to create variable: no default root window
+Traceback:
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\main.py", line 241, in <module>
+    main()
+  File "E:\Subtitle-Translator-en-pl\main.py", line 85, in main
+    run_gui()
+  File "E:\Subtitle-Translator-en-pl\gui.py", line 34, in run_gui
+    run_gui_nllb()
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 20, in run_gui_nllb
+    fix_spacing_var = tk.BooleanVar(value=True)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 632, in __init__
+    Variable.__init__(self, master, value, name)
+  File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 393, in __init__
+    master = _get_default_root('create variable')
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 319, in _get_default_root
+    raise RuntimeError(f"Too early to {what}: no default root window")
+RuntimeError: Too early to create variable: no default root window
+
+ERROR:root:
+[ERROR] TclError: cannot use geometry manager grid inside .!labelframe.!frame which already has slaves managed by pack
+Traceback:
+Traceback (most recent call last):
+  File "E:\Subtitle-Translator-en-pl\main.py", line 247, in <module>
+    main()
+  File "E:\Subtitle-Translator-en-pl\main.py", line 90, in main
+    run_gui()
+  File "E:\Subtitle-Translator-en-pl\gui.py", line 34, in run_gui
+    run_gui_nllb()
+  File "E:\Subtitle-Translator-en-pl\gui_nllb.py", line 333, in run_gui_nllb
+    tk.Label(preset_frame, text="Quality Mode:").grid(row=1, column=1, sticky="n", pady=(2,0), padx=(0,1))
+  File "C:\Program Files\Python311\Lib\tkinter\__init__.py", line 2549, in grid_configure
+    self.tk.call(
+_tkinter.TclError: cannot use geometry manager grid inside .!labelframe.!frame which already has slaves managed by pack
+
