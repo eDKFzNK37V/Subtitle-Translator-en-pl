@@ -41,18 +41,17 @@ class SubtitleTranslator:
     
     TAG_PATTERN = re.compile(r'(\{[^}]*\}|\\[NnHh])')
     
-    def __init__(self, model_name: str = "facebook/nllb-200-3.3B"):
+    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 8, num_beams: int = 2):
         """Initialize translator with NLLB model."""
         print(f"Loading model: {model_name}")
-        
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device}")
-        
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
         self.model.to(self.device)
         self.model.eval()
-        
+        self.batch_size = batch_size
+        self.num_beams = num_beams
         print("Model loaded!")
     
     def protect_tags(self, text: str) -> Tuple[str, List[str]]:
@@ -96,21 +95,18 @@ class SubtitleTranslator:
         return ' '.join(words)
     
     def translate(self, texts: List[str], src_lang: str, tgt_lang: str,
-                  batch_size: int = 8, progress_callback=None) -> List[str]:
+                  batch_size: Optional[int] = None, num_beams: Optional[int] = None, progress_callback=None) -> List[str]:
         """Translate a list of texts."""
         src_code = self.LANG_CODES.get(src_lang, src_lang)
         tgt_code = self.LANG_CODES.get(tgt_lang, tgt_lang)
-        
         self.tokenizer.src_lang = src_code
         tgt_id = self.tokenizer.convert_tokens_to_ids(tgt_code)
-        
         results = []
         total = len(texts)
-        
+        batch_size = batch_size if batch_size is not None else self.batch_size
+        num_beams = num_beams if num_beams is not None else self.num_beams
         for i in range(0, total, batch_size):
             batch = texts[i:i + batch_size]
-            
-            # Encode
             encoded = self.tokenizer(
                 batch,
                 return_tensors="pt",
@@ -118,24 +114,18 @@ class SubtitleTranslator:
                 truncation=True,
                 max_length=256
             ).to(self.device)
-            
-            # Generate
             with torch.no_grad():
                 generated = self.model.generate(
                     **encoded,
                     forced_bos_token_id=tgt_id,
                     max_length=256,
-                    num_beams=3,
+                    num_beams=num_beams,
                     early_stopping=True
                 )
-            
-            # Decode
             translated = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
             results.extend(translated)
-            
             if progress_callback:
                 progress_callback(min(i + batch_size, total), total)
-        
         return results
     
     def translate_ass_file(self, input_path: str, src_lang: str, tgt_lang: str,
@@ -315,7 +305,7 @@ def run_gui():
     
     root = tk.Tk()
     root.title("Subtitle Translator (NLLB)")
-    root.geometry("500x350")
+    root.geometry("500x300")
     
     # Variables
     file_path = tk.StringVar()
@@ -323,6 +313,8 @@ def run_gui():
     tgt_lang = tk.StringVar(value="pl")
     file_type = tk.StringVar(value="ass")
     n_tag_wordidx = tk.IntVar(value=0)
+    batch_size_var = tk.IntVar(value=8)
+    num_beams_var = tk.IntVar(value=2)
     
     LANG_OPTIONS = ["en", "pl", "ja", "fr", "de"]
     FILE_TYPES = ["ass", "srt", "txt"]
@@ -363,15 +355,24 @@ def run_gui():
     tk.Spinbox(root, from_=0, to=50, textvariable=n_tag_wordidx, width=10).grid(row=4, column=1, sticky="w", padx=5, pady=5)
     tk.Label(root, text="(0 = auto)", font=("Arial", 9)).grid(row=4, column=2, sticky="w")
     
+    # Batch size and beams controls
+    tk.Label(root, text="Batch size:").grid(row=5, column=0, sticky="w", padx=5, pady=5)
+    tk.Spinbox(root, from_=1, to=64, textvariable=batch_size_var, width=10).grid(row=5, column=1, sticky="w", padx=5, pady=5)
+    tk.Label(root, text="(Higher = faster, more VRAM)", font=("Arial", 9)).grid(row=5, column=2, sticky="w")
+
+    tk.Label(root, text="Beam search (num_beams):").grid(row=6, column=0, sticky="w", padx=5, pady=5)
+    tk.Spinbox(root, from_=1, to=10, textvariable=num_beams_var, width=10).grid(row=6, column=1, sticky="w", padx=5, pady=5)
+    tk.Label(root, text="(Higher = better quality, slower)", font=("Arial", 9)).grid(row=6, column=2, sticky="w")
+
     # Progress
     progress_label = tk.Label(root, text="Translation: 0%")
-    progress_label.grid(row=5, column=0, columnspan=3, pady=5)
-    
+    progress_label.grid(row=7, column=0, columnspan=3, pady=5)
+
     status_label = tk.Label(root, text="Ready")
-    status_label.grid(row=6, column=0, columnspan=3, pady=5)
-    
+    status_label.grid(row=8, column=0, columnspan=3, pady=5)
+
     start_btn = tk.Button(root, text="Start Translation", width=20)
-    start_btn.grid(row=7, column=0, columnspan=3, pady=10)
+    start_btn.grid(row=9, column=0, columnspan=3, pady=10)
     
     def update_progress(current, total):
         """Update progress display."""
@@ -459,11 +460,14 @@ def run_gui():
             try:
                 # Load model if needed
                 if translator is None:
-                    translator = SubtitleTranslator()
-                
+                    translator = SubtitleTranslator(
+                        batch_size=batch_size_var.get(),
+                        num_beams=num_beams_var.get()
+                    )
+
                 status_label.config(text="Translating...")
                 root.update_idletasks()
-                
+
                 # Translate based on file type
                 ftype = file_type.get()
                 if ftype == "ass":
@@ -479,13 +483,13 @@ def run_gui():
                     output_path, originals, translations = translator.translate_txt_file(
                         path, src_lang.get(), tgt_lang.get(), update_progress
                     )
-                
+
                 status_label.config(text="Complete!")
                 progress_label.config(text="Translation: 100%")
-                
+
                 # Show review window
                 root.after(0, lambda: show_review(originals, translations, output_path))
-                
+
             except Exception as e:
                 root.after(0, lambda: messagebox.showerror("Error", f"Translation failed:\n{str(e)}"))
                 root.after(0, reset_ui)
@@ -511,6 +515,7 @@ def run_cli():
     parser.add_argument("--tgt", default="pl", help="Target language (default: pl)")
     parser.add_argument("--nwordix", type=int, default=0, help="Word index for \\N tag insertion (0=auto, .ass only)")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
+    parser.add_argument("--num-beams", type=int, default=2, help="Beam search width (default: 2)")
     
     args = parser.parse_args()
     
@@ -528,7 +533,7 @@ def run_cli():
     print(f"Languages: {args.src} -> {args.tgt}")
     
     # Load translator
-    translator = SubtitleTranslator()
+    translator = SubtitleTranslator(batch_size=args.batch_size, num_beams=args.num_beams)
     
     def progress_callback(current, total):
         pct = int((current / total) * 100)
