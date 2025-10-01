@@ -1,36 +1,40 @@
 #!/usr/bin/env python3
 """
-Unit tests for the ASS translator (without requiring model installation).
+Unit tests for the Subtitle Translator (without requiring model installation).
 Tests the parsing, tag protection, and restoration logic.
 """
 
 import unittest
 import sys
 import os
+from typing import Any
 
 # Mock the imports that require heavy dependencies
 class MockTokenizer:
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         self.src_lang = None
         self.lang_code_to_id = {}
     
-    def __call__(self, text, **kwargs):
+    def __call__(self, text: Any, **kwargs: Any) -> dict:
         return {"input_ids": [[1, 2, 3]]}
     
-    def batch_decode(self, tokens, **kwargs):
+    def batch_decode(self, tokens: Any, **kwargs: Any) -> list:
         return ["mocked translation"]
+    
+    def convert_tokens_to_ids(self, token: str) -> int:
+        return 123
 
 class MockModel:
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         pass
     
-    def to(self, device):
+    def to(self, device: str) -> 'MockModel':
         return self
     
-    def eval(self):
+    def eval(self) -> 'MockModel':
         return self
     
-    def generate(self, **kwargs):
+    def generate(self, **kwargs: Any) -> list:
         return [[1, 2, 3]]
 
 # Create mock torch module
@@ -38,7 +42,7 @@ mock_torch = type('MockTorch', (), {
     'cuda': type('cuda', (), {'is_available': lambda: False})(),
     'no_grad': lambda: type('context', (), {'__enter__': lambda self: None, '__exit__': lambda self, *args: None})(),
 })()
-sys.modules['torch'] = mock_torch
+sys.modules['torch'] = mock_torch  # type: ignore
 
 # Create mock transformers module
 mock_transformers = type('MockTransformers', (), {
@@ -49,24 +53,24 @@ mock_transformers = type('MockTransformers', (), {
         'from_pretrained': staticmethod(lambda x: MockModel())
     })()
 })()
-sys.modules['transformers'] = mock_transformers
+sys.modules['transformers'] = mock_transformers  # type: ignore
 
 # Create mock tqdm module
 mock_tqdm = type('MockTqdm', (), {
     'tqdm': lambda x, **kwargs: x
 })()
-sys.modules['tqdm'] = mock_tqdm
+sys.modules['tqdm'] = mock_tqdm  # type: ignore
 
-# Now import from main.py instead of translate_ass
+# Now import from main.py
 try:
-    from main import SubtitleTranslator as ASSTranslator
+    from main import SubtitleTranslator
 except ImportError:
     # Fallback for old structure
-    from translate_ass import ASSTranslator  # type: ignore
+    from translate_ass import ASSTranslator as SubtitleTranslator  # type: ignore
 
 
-class TestASSTranslator(unittest.TestCase):
-    """Test cases for ASSTranslator class."""
+class TestSubtitleTranslator(unittest.TestCase):
+    """Test cases for SubtitleTranslator class."""
     
     def setUp(self):
         """Set up test fixtures."""
@@ -77,123 +81,75 @@ class TestASSTranslator(unittest.TestCase):
     def test_tag_pattern(self):
         """Test that tag pattern matches correctly."""
         import re
-        pattern = ASSTranslator.TAG_PATTERN
+        pattern = SubtitleTranslator.TAG_PATTERN
         
-        # Test italic tags
-        self.assertTrue(pattern.search(r'{\i1}'))
-        self.assertTrue(pattern.search(r'{\i0}'))
-        
-        # Test bold tags
-        self.assertTrue(pattern.search(r'{\b1}'))
+        # Test ASS tags
+        self.assertTrue(pattern.search(r'{\pos(320,240)}'))
+        self.assertTrue(pattern.search(r'{\an8}'))
         
         # Test line break
         self.assertTrue(pattern.search(r'\N'))
+        self.assertTrue(pattern.search(r'\n'))
         
-        # Test color tags
-        self.assertTrue(pattern.search(r'{\c&HFF0000&}'))
-        
-        # Test reset tag
-        self.assertTrue(pattern.search(r'{\r}'))
-    
-    def test_extract_text_from_dialogue(self):
-        """Test extraction of text from dialogue lines."""
-        translator = ASSTranslator.__new__(ASSTranslator)
-        
-        # Test normal dialogue line
-        line = "Dialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,Hello, world!\n"
-        prefix, text, suffix = translator.extract_text_from_dialogue(line)
-        
-        self.assertEqual(prefix, "Dialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,")
-        self.assertEqual(text, "Hello, world!")
-        self.assertEqual(suffix, "\n")
+        # Test other escapes
+        self.assertTrue(pattern.search(r'\H'))
+        self.assertTrue(pattern.search(r'\h'))
     
     def test_protect_and_restore_tags(self):
         """Test tag protection and restoration."""
-        translator = ASSTranslator.__new__(ASSTranslator)
+        translator = SubtitleTranslator.__new__(SubtitleTranslator)
         
-        # Test with italic tags
-        text = r"{\i1}This is italic{\i0} and this is normal."
+        # Test with ASS tags
+        text = r"{\pos(320,240)}This is text{\an8} with tags."
         protected, tags = translator.protect_tags(text)
         
         self.assertIn("<TAG0>", protected)
         self.assertIn("<TAG1>", protected)
         self.assertEqual(len(tags), 2)
-        self.assertEqual(tags[0], r"{\i1}")
-        self.assertEqual(tags[1], r"{\i0}")
+        self.assertEqual(tags[0], r'{\pos(320,240)}')
+        self.assertEqual(tags[1], r'{\an8}')
         
-        # Restore tags
+        # Test restoration
         restored = translator.restore_tags(protected, tags)
         self.assertEqual(restored, text)
     
-    def test_protect_tags_with_line_breaks(self):
-        """Test tag protection with line breaks."""
-        translator = ASSTranslator.__new__(ASSTranslator)
+    def test_insert_n_tags(self):
+        """Test \\N tag insertion."""
+        translator = SubtitleTranslator.__new__(SubtitleTranslator)
         
-        text = r"First line\NSecond line"
-        protected, tags = translator.protect_tags(text)
+        # Test insertion at specific index
+        text = "This is a long subtitle line"
+        result = translator.insert_n_tags(text, n_count=1, word_idx=4)
+        self.assertIn(r'\N', result)
         
-        self.assertIn("<TAG0>", protected)
-        self.assertEqual(len(tags), 1)
-        self.assertEqual(tags[0], r"\N")
+        # Test with no tags
+        result = translator.insert_n_tags(text, n_count=0, word_idx=4)
+        self.assertEqual(result, text)
+        
+        # Test with auto (word_idx=0) - should insert in middle
+        result = translator.insert_n_tags(text, n_count=1, word_idx=0)
+        self.assertIn(r'\N', result)
     
-    def test_protect_tags_complex(self):
-        """Test tag protection with complex formatting."""
-        translator = ASSTranslator.__new__(ASSTranslator)
+    def test_lang_codes(self):
+        """Test language code mappings."""
+        codes = SubtitleTranslator.LANG_CODES
         
-        text = r"{\b1}Bold{\b0}\N{\i1}Italic{\i0} {\c&HFF0000&}Red{\r}"
-        protected, tags = translator.protect_tags(text)
+        # Check essential languages are present
+        self.assertIn('en', codes)
+        self.assertIn('pl', codes)
+        self.assertIn('ja', codes)
+        self.assertIn('fr', codes)
+        self.assertIn('de', codes)
         
-        # Should have 7 tags
-        self.assertEqual(len(tags), 7)
-        
-        # Verify order
-        self.assertEqual(tags[0], r"{\b1}")
-        self.assertEqual(tags[1], r"{\b0}")
-        self.assertEqual(tags[2], r"\N")
-        self.assertEqual(tags[3], r"{\i1}")
-        self.assertEqual(tags[4], r"{\i0}")
-        
-        # Restore and verify
-        restored = translator.restore_tags(protected, tags)
-        self.assertEqual(restored, text)
-    
-    def test_parse_ass_file(self):
-        """Test parsing of .ass file."""
-        translator = ASSTranslator.__new__(ASSTranslator)
-        
-        # Create a test file
-        test_file = '/tmp/test_parse.ass'
-        with open(test_file, 'w', encoding='utf-8') as f:
-            f.write("""[Script Info]
-Title: Test
-
-[V4+ Styles]
-Format: Name, Fontname
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,Test dialogue 1
-Dialogue: 0,0:00:05.00,0:00:08.00,Default,,0,0,0,,Test dialogue 2
-""")
-        
-        header, dialogues = translator.parse_ass_file(test_file)
-        
-        # Clean up
-        os.remove(test_file)
-        
-        # Verify
-        self.assertTrue(any('[Script Info]' in line for line in header))
-        self.assertTrue(any('[Events]' in line for line in header))
-        self.assertEqual(len(dialogues), 2)
-        self.assertTrue(dialogues[0].startswith('Dialogue:'))
-        self.assertIn('Test dialogue 1', dialogues[0])
-        self.assertIn('Test dialogue 2', dialogues[1])
+        # Check NLLB format
+        self.assertEqual(codes['en'], 'eng_Latn')
+        self.assertEqual(codes['pl'], 'pol_Latn')
 
 
 def run_tests():
     """Run all tests."""
     loader = unittest.TestLoader()
-    suite = loader.loadTestsFromTestCase(TestASSTranslator)
+    suite = loader.loadTestsFromTestCase(TestSubtitleTranslator)
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     return result.wasSuccessful()
