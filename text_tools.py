@@ -1,23 +1,3 @@
-def force_preserve_names(original: str, translated: str) -> str:
-    """
-    Ensure all proper names (unknown words) from the original are present in the translated line.
-    If a name is missing, reinsert it at a reasonable position (start of line, or after tag if present).
-    """
-    names = detect_proper_names(original)
-    out = translated
-    for name in names:
-        # If name (case-insensitive) is not present in output, reinsert
-        if name.lower() not in out.lower():
-            # Insert after leading tag if present, else at start
-            tag_match = re.match(r'^(\{\\[a-zA-Z0-9]+[^}]*})', out)
-            insert_pos = tag_match.end() if tag_match else 0
-            # Add a space if needed
-            if insert_pos > 0 and not out[insert_pos:insert_pos+1].isspace():
-                name_to_insert = ' ' + name
-            else:
-                name_to_insert = name + ' '
-            out = out[:insert_pos] + name_to_insert + out[insert_pos:]
-    return out
 from typing import List, Tuple
 import re
 import torch
