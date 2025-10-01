@@ -1,63 +1,59 @@
-# Subtitle-Translator-en-pl: Copilot AI Agent Guide
+# Copilot Instructions for NLLB-3.3B Subtitle Translation App
 
-## Architecture & Data Flow
+## Project Overview
 
-- **CLI entry:** `main.py` (also launches GUI if no file provided)
-- **GUI entry:** `main_gui.py` → `gui.py`, `gui_nllb.py`, `gui_m2m100.py`
-- **Core pipeline:** `subtitle_workflow.py` (translation, correction, tag handling)
-- **Batch/context-aware processing:** `pipeline.py` (calls `subtitle_workflow.py`)
-- **Utilities:** `text_tools.py` (tag utils, dialogue grouping), `logs.py`, `resources.py`, `config.py`, `utils.py`
-
-**Data Flow:**
-
-1. Load subtitle (`subtitle_workflow.py`)
-2. Preprocess: extract `\N` tags (`text_tools.py: extract_newline_tags`), extract tag placeholders (`extract_tags_with_placeholders`)
-3. Group dialogue lines (`group_dialogue_lines`)
-4. Translate (model via `models.py`, glossary via `resources.py`)
-5. Post-process: restore tags (`restore_tags_from_placeholders`), grammar correction (`correct_grammar_with_fallback`), style/tone (`adjust_subtitle_style_tone`), reinsert `\N` (`insert_newline_tags_contextaware`), save output
+- This Python app batch-translates `.ass` subtitle files using Meta's NLLB-200-3.3B model.
+- Key files: `translate_ass.py` (core logic), `batch_translate.py` (batch utility), `test_translate_ass.py` (unit tests), `example.ass` (sample input).
+- Preserves all formatting, timestamps, and style tags in output files.
+- Tag protection: Formatting tags (e.g., `{\i1}`, `\N`) are replaced with placeholders before translation, then restored.
+- Language codes are mapped via `ASSTranslator.LANG_CODES` in `translate_ass.py` (e.g., `eng` → `eng_Latn`).
 
 ## Developer Workflows
 
-- **Run GUI:** `python main.py` (no args) or `python main_gui.py`
-- **Run CLI:** `python main.py <input_file>`
-- **Activate env:** `subtitle-env\Scripts\activate` (PowerShell)
-- **Install deps:** `pip install -r requirements.txt` (then install torch as instructed)
-- **Test core:** `python test_core_functions.py` (if present)
-- **Integration demo:** `python demo_integration.py` (if present)
+- **Install**: See `INSTALL.md` for Python 3.11+, CUDA, and dependency setup. Use `pip install -r requirements.txt`.
+- **Single file translation**: `python translate_ass.py input.ass output.ass eng fra`
+- **Batch translation**: `python batch_translate.py input_dir/ output_dir/ eng fra`
+- **Testing**: Run `python test_translate_ass.py` (uses mocks, no model download required).
+- **Model download**: On first run, the NLLB model (~13GB) is auto-downloaded and cached.
+- **CPU/GPU selection**: Use `--device cpu` or `--device cuda` as needed.
+- **Pattern matching**: Batch mode supports `--pattern` for file selection (default: `*.ass`).
 
-## Key Files & Patterns
+## Project-Specific Patterns
 
-- Tag handling: always remove `\N` before translation, reinsert after; use placeholder-based tag extraction/restoration for all tags
-- Dialogue grouping: use `group_dialogue_lines`/`split_grouped_translations` for context-aware translation
-- Correction: use `correct_grammar_with_fallback` (confidence threshold ≥0.6); apply glossary with `apply_glossary(text, use_context=True)`
-- Style/tone: use `adjust_subtitle_style_tone` for subtitle-optimized output
-- Model integration: all models loaded via `models.py:get_nllb_globals`
-- Logging/progress: via `logs.py` and `progress_controller.py`
-- Config: in `config.py`; thresholds in `pipeline.py`
+- **Header preservation**: Subtitle file headers (Script Info, Styles) are never translated or altered.
+- **Dialogue parsing**: Only dialogue lines are translated; tags are protected and restored.
+- **Error handling**: Scripts exit with clear error messages for missing files, invalid language codes, or empty input.
+- **Language extensibility**: To add new languages, update `LANG_CODES` in `translate_ass.py`.
+- **Testing conventions**: Tests mock heavy dependencies (torch, transformers) for fast, offline runs.
 
-## External Dependencies
+## Integration & Dependencies
 
-- HuggingFace Transformers (translation/grammar)
-- PyTorch (neural models, install torch separately for CUDA/CPU)
-- LanguageTool Python (grammar)
-- pysubs2 (subtitle parsing)
-- Tkinter (GUI)
+- **Core dependencies**: torch (CUDA 12.1), transformers, sentencepiece, tqdm (see `requirements.txt`).
+- **Model**: facebook/nllb-200-3.3B (HuggingFace hub).
+- **No web server or API**: All translation is local, file-based.
 
-## Example Usage
+## Examples
 
-- Translate: `python main.py example.srt`
-- GUI: `python main.py`
-- Tag/\N handling:
-  - Input: `Hello,\Nworld! {\pos(320,240)}`
-  - After extraction: `Hello, world!`
-  - After translation: `Cześć, świecie!`
-  - After reinsertion: `Cześć,\Nświecie! {\pos(320,240)}`
+- See `EXAMPLES.md` and `USAGE.md` for input/output samples and advanced usage.
+- Example batch command:
+  ```bash
+  python batch_translate.py input_subs/ output_subs/ eng fra
+  ```
+- Example test run:
+  ```bash
+  python test_translate_ass.py
+  ```
 
-## Troubleshooting
+## File/Directory References
 
-- Model/language code errors: see `subtitle_workflow.py`, `models.py`
-- Tag placement: see `text_tools.py`
-- Dialogue grouping: see `group_dialogue_lines` in `text_tools.py`
-- Correction quality: see fallback logic in `pipeline.py`
-- Performance: adjust thresholds/timeouts in `pipeline.py`
-- See `README.md` and code comments for more
+- `translate_ass.py`: Main translation logic, tag handling, language codes
+- `batch_translate.py`: Batch processing utility
+- `test_translate_ass.py`: Unit tests (mocked)
+- `requirements.txt`: Dependency versions
+- `example.ass`: Sample subtitle file
+- `EXAMPLES.md`, `USAGE.md`: Usage and translation examples
+- `INSTALL.md`: Setup and troubleshooting
+
+---
+
+For more, see [README.md](../README.md) and [INSTALL.md](../INSTALL.md).
