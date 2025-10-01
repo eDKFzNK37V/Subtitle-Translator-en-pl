@@ -251,7 +251,6 @@ class SubtitleTranslator:
         
         texts_to_translate = []
         original_texts = []
-        all_tags = []  # Store tags for each line
         block_data = []
         
         for block in blocks:
@@ -264,10 +263,7 @@ class SubtitleTranslator:
                 text = '\n'.join(text_lines)
                 
                 original_texts.append(text)
-                
-                # Protect tags and store them
-                protected, tags = self.protect_tags(text)
-                all_tags.append(tags)
+                protected, _ = self.protect_tags(text)
                 texts_to_translate.append(protected)
                 block_data.append((index_line, time_line))
         
@@ -275,10 +271,13 @@ class SubtitleTranslator:
         translated = self.translate(texts_to_translate, src_lang, tgt_lang,
                                    progress_callback=progress_callback)
         
-        # Restore tags using the stored tags from before translation
+        # Restore tags
         final_texts = []
+        all_tags = []
         for i, trans in enumerate(translated):
-            with_tags = self.restore_tags(trans, all_tags[i])
+            _, tags = self.protect_tags(original_texts[i])
+            all_tags.append(tags)
+            with_tags = self.restore_tags(trans, tags)
             final_texts.append(with_tags)
         
         # Create log file
@@ -501,20 +500,11 @@ def run_gui():
             messagebox.showinfo("Success", f"Translation completed!\nSaved to: {output_path}")
             reset_ui()
         
-        def cancel_translation():
-            """Cancel translation and reset UI."""
-            review_win.destroy()
-            messagebox.showinfo("Cancelled", "Translation was cancelled.")
-            reset_ui()
-        
-        # Handle window close (X button)
-        review_win.protocol("WM_DELETE_WINDOW", cancel_translation)
-        
         # Bottom button frame
         btn_frame = tk.Frame(review_win)
         btn_frame.pack(side=tk.BOTTOM, pady=10)
         tk.Button(btn_frame, text="Approve and Save", command=save_and_close, width=20, bg="#4CAF50", fg="white").pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Cancel", command=cancel_translation, width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=review_win.destroy, width=15).pack(side=tk.LEFT, padx=5)
     
     def reset_ui():
         """Reset UI to initial state."""
@@ -575,9 +565,7 @@ def run_gui():
                 root.after(0, lambda: show_review(originals, translations, output_path))
 
             except Exception as e:
-                import traceback
-                error_msg = f"Translation failed:\n\n{str(e)}\n\n{traceback.format_exc()}"
-                root.after(0, lambda: messagebox.showerror("Translation Error", error_msg))
+                root.after(0, lambda: messagebox.showerror("Error", f"Translation failed:\n{str(e)}"))
                 root.after(0, reset_ui)
         
         # Run in thread
