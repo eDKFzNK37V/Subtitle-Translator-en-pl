@@ -455,6 +455,7 @@ def run_gui():
         progress_label.config(text="Translation: 0%")
         
         def translate_thread():
+            nonlocal translator
             try:
                 # Load model if needed
                 if translator is None:

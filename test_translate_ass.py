@@ -33,12 +33,15 @@ class MockModel:
     def generate(self, **kwargs):
         return [[1, 2, 3]]
 
-sys.modules['torch'] = type('MockTorch', (), {
+# Create mock torch module
+mock_torch = type('MockTorch', (), {
     'cuda': type('cuda', (), {'is_available': lambda: False})(),
     'no_grad': lambda: type('context', (), {'__enter__': lambda self: None, '__exit__': lambda self, *args: None})(),
 })()
+sys.modules['torch'] = mock_torch
 
-sys.modules['transformers'] = type('MockTransformers', (), {
+# Create mock transformers module
+mock_transformers = type('MockTransformers', (), {
     'AutoTokenizer': type('AutoTokenizer', (), {
         'from_pretrained': staticmethod(lambda x: MockTokenizer())
     })(),
@@ -46,13 +49,20 @@ sys.modules['transformers'] = type('MockTransformers', (), {
         'from_pretrained': staticmethod(lambda x: MockModel())
     })()
 })()
+sys.modules['transformers'] = mock_transformers
 
-sys.modules['tqdm'] = type('MockTqdm', (), {
+# Create mock tqdm module
+mock_tqdm = type('MockTqdm', (), {
     'tqdm': lambda x, **kwargs: x
 })()
+sys.modules['tqdm'] = mock_tqdm
 
-# Now import our module
-from translate_ass import ASSTranslator
+# Now import from main.py instead of translate_ass
+try:
+    from main import SubtitleTranslator as ASSTranslator
+except ImportError:
+    # Fallback for old structure
+    from translate_ass import ASSTranslator  # type: ignore
 
 
 class TestASSTranslator(unittest.TestCase):
