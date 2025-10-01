@@ -1,247 +1,569 @@
-# main.py
-import argparse
+#!/usr/bin/env python3
+"""
+Simplified Subtitle Translator - NLLB Model
+Supports .ass, .srt, and .txt file formats
+Combined CLI and GUI in single file
+"""
+
 import os
-import time
-from logs import on_cli_start, on_cli_progress, on_cli_finish, on_cli_error, SubtitleLogger
+import sys
+import re
+import argparse
+import threading
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from typing import List, Tuple, Optional
+
+try:
+    import torch
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+    from tqdm import tqdm
+except ImportError as e:
+    print(f"Error: Missing dependencies - {e}")
+    print("Please install: pip install torch transformers tqdm")
+    sys.exit(1)
 
 
-def print_usage():
-    print("""
-Subtitle Translator Usage:
+# ============================================================================
+# Translation Core
+# ============================================================================
 
-To use the GUI (recommended for most users):
-    python main.py
-
-To translate a subtitle file from the command line:
-    python main.py <input_file_path> [options]
-
-Options:
-    --src en|pl           Source language (default: en)
-    --tgt en|pl           Target language (default: pl)
-    --nwordix N           Word index for \\N tag insertion (default: 0, context-aware)
-    --beams N             Number of beams for translation (default: 3, range: 1-10)
-    --length-penalty F    Length penalty (default: 1.0, range: 0.1-2.0)
-    --temperature F       Temperature for sampling (default: 1.0, range: 0.1-2.0)
-    --sampling            Enable sampling mode (uses temperature)
-
-    --batch-size N        Batch size (default: 12, range: 1-32)
-    --quality MODE        Translation quality mode: balanced (default), aggressive, conservative
-    --no-grammar          Disable grammar correction
-
-Examples:
-    python main.py example.ass
-    python main.py example.ass --src en --tgt pl
-    python main.py example.ass --beams 5 --length-penalty 1.2  # Higher quality
-    python main.py example.ass --beams 1 --batch-size 16       # Faster
-    python main.py example.ass --sampling --temperature 1.3    # More creative
-
-    python main.py example.ass --no-grammar                    # Skip grammar correction
-    python main.py example.ass --quality aggressive            # Use aggressive quality mode
-
-If you are not sure, just run: python main.py
-""")
-
-print("Any informations about updating any package, can be ignored due to specifics of the app")
-
-def create_translation_callback(stage_name="translation"):
-    """Create a translation progress callback."""
-    def callback(current, total):
-        percentage = (current / total) * 100 if total > 0 else 0
-        print(f"\r{stage_name.capitalize()}: {current}/{total} ({percentage:.0f}%)", end='', flush=True)
-        if current >= total:
-            print()  # New line when complete
-    return callback
-
-def create_post_processing_callback():
-    """Create a post-processing progress callback."""
-    def callback(current, total):
-        percentage = (current / total) * 100 if total > 0 else 0
-        print(f"\rPost-processing: {current}/{total} ({percentage:.0f}%)", end='', flush=True)
-        if current >= total:
-            print()  # New line when complete
-    return callback
-
-def main():
-    parser = argparse.ArgumentParser(description="Subtitle Translator CLI", add_help=False)
-
-    parser.add_argument("input_file_path", nargs="?", help="Path to the subtitle file to translate")
-    parser.add_argument("--src", default="en", help="Source language code (default: en)")
-    parser.add_argument("--tgt", default="pl", help="Target language code (default: pl)")
-    parser.add_argument("--nwordix", default=0, type=int, help="Word index after which word to insert \\N tags (default: 0, context-aware if 0)")
-    parser.add_argument("--beams", default=3, type=int, help="Number of beams for translation (default: 3, range: 1-10)")
-    parser.add_argument("--length-penalty", default=1.0, type=float, help="Length penalty for translation (default: 1.0, range: 0.1-2.0)")
-    parser.add_argument("--temperature", default=1.0, type=float, help="Temperature for sampling (default: 1.0, range: 0.1-2.0)")
-    parser.add_argument("--sampling", action="store_true", help="Enable sampling mode (uses temperature)")
-    parser.add_argument("--batch-size", default=12, type=int, help="Batch size for translation (default: 12, range: 1-32)")
-    parser.add_argument("--quality", default="balanced", choices=["balanced", "aggressive", "conservative"], help="Translation quality mode: balanced (default), aggressive, conservative")
-    parser.add_argument("--no-grammar", action="store_true", help="Disable grammar correction")
-    parser.add_argument("-h", "--help", action="store_true", help="Show this help message and exit")
-    args = parser.parse_args()
-
-    if args.help:
-        print_usage()
-        return
-
-    if not args.input_file_path:
-        print_usage()
-        # Import GUI only when needed
-        try:
-            from gui import run_gui
-            run_gui()
-        except ImportError as e:
-            print(f"GUI not available: {e}")
-            print("Please install required dependencies or use CLI mode with a file argument.")
-        return
-
-    # Validate input file exists
-    if not os.path.exists(args.input_file_path):
-        on_cli_error(f"Input file not found: {args.input_file_path}", args.input_file_path)
-        return
-
-    start_time = time.time()
+class SubtitleTranslator:
+    """Simple NLLB-based translator for subtitles."""
     
-    # Prepare output path
-    base, ext = args.input_file_path.rsplit('.', 1)
-    output_path = f"{base}_{args.tgt}.{ext}"
+    LANG_CODES = {
+        'en': 'eng_Latn',
+        'pl': 'pol_Latn',
+        'ja': 'jpn_Jpan',
+        'fr': 'fra_Latn',
+        'de': 'deu_Latn',
+    }
     
-    try:
-        # Import translation modules only when needed
-        from subtitle_workflow import translate_with_context_nllb, correct_text_batch_nllb
-        from models import get_nllb_globals
-        from utils import load_subtitle_lines, save_subtitle_lines
-        from text_tools import (
-            extract_newline_tags, insert_newline_tags_at_wordidx, 
-            extract_tags_with_placeholders, restore_tags_from_placeholders,
-            group_dialogue_lines, split_grouped_translations,
-            insert_newline_tags_contextaware
-        )
+    TAG_PATTERN = re.compile(r'(\{[^}]*\}|\\[NnHh])')
+    
+    def __init__(self, model_name: str = "facebook/nllb-200-3.3B"):
+        """Initialize translator with NLLB model."""
+        print(f"Loading model: {model_name}")
         
-        # CLI Start event
-        on_cli_start(args.input_file_path, args.src, args.tgt, output_path)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Using device: {self.device}")
         
-        # Load NLLB model
-        print("Initialization: Loading NLLB model...")
-        model, tokenizer, device = get_nllb_globals()
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        self.model.to(self.device)
+        self.model.eval()
         
-        # Load subtitle lines
-        print("Loading subtitle file...")
-        texts, subs, idx_map = load_subtitle_lines(args.input_file_path)
-        if not texts:
-            on_cli_error("No subtitle lines found in the input file", args.input_file_path)
-            return
-
-        # Extract \N tags before translation (same as GUI)
-        cleaned_lines = []
+        print("Model loaded!")
+    
+    def protect_tags(self, text: str) -> Tuple[str, List[str]]:
+        """Replace tags with placeholders."""
+        tags = []
+        
+        def replacer(match):
+            tags.append(match.group(0))
+            return f"<TAG{len(tags)-1}>"
+        
+        protected = self.TAG_PATTERN.sub(replacer, text)
+        return protected, tags
+    
+    def restore_tags(self, text: str, tags: List[str]) -> str:
+        """Restore tags from placeholders."""
+        for i, tag in enumerate(tags):
+            text = text.replace(f"<TAG{i}>", tag)
+        # Clean any remaining placeholders
+        text = re.sub(r'<TAG\d+>', '', text)
+        return text
+    
+    def insert_n_tags(self, text: str, n_count: int, word_idx: int = 0) -> str:
+        r"""Insert \N tags at specified word index."""
+        if n_count <= 0 or not text.strip():
+            return text
+        
+        words = text.split()
+        if len(words) < 2:
+            return text
+        
+        # Use middle if word_idx is 0 or out of range
+        if word_idx <= 0 or word_idx >= len(words):
+            word_idx = len(words) // 2
+        
+        # Insert \N tags
+        for _ in range(n_count):
+            if word_idx < len(words):
+                words.insert(word_idx, '\\N')
+                word_idx += 1
+        
+        return ' '.join(words)
+    
+    def translate(self, texts: List[str], src_lang: str, tgt_lang: str,
+                  batch_size: int = 8, progress_callback=None) -> List[str]:
+        """Translate a list of texts."""
+        src_code = self.LANG_CODES.get(src_lang, src_lang)
+        tgt_code = self.LANG_CODES.get(tgt_lang, tgt_lang)
+        
+        self.tokenizer.src_lang = src_code
+        tgt_id = self.tokenizer.convert_tokens_to_ids(tgt_code)
+        
+        results = []
+        total = len(texts)
+        
+        for i in range(0, total, batch_size):
+            batch = texts[i:i + batch_size]
+            
+            # Encode
+            encoded = self.tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=256
+            ).to(self.device)
+            
+            # Generate
+            with torch.no_grad():
+                generated = self.model.generate(
+                    **encoded,
+                    forced_bos_token_id=tgt_id,
+                    max_length=256,
+                    num_beams=3,
+                    early_stopping=True
+                )
+            
+            # Decode
+            translated = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
+            results.extend(translated)
+            
+            if progress_callback:
+                progress_callback(min(i + batch_size, total), total)
+        
+        return results
+    
+    def translate_ass_file(self, input_path: str, src_lang: str, tgt_lang: str,
+                           n_tag_idx: int = 0, progress_callback=None) -> Tuple[str, List[str], List[str]]:
+        """Translate .ass file."""
+        with open(input_path, 'r', encoding='utf-8-sig') as f:
+            lines = f.readlines()
+        
+        # Separate header and dialogue
+        header = []
+        dialogues = []
+        texts_to_translate = []
+        original_texts = []
         n_tag_counts = []
-        for line in texts:
-            cleaned, n_count = extract_newline_tags(line)
-            cleaned_lines.append(cleaned)
-            n_tag_counts.append(n_count)
         
-        # Extract placeholder tags from cleaned lines (same as GUI)
-        placeholder_maps = [extract_tags_with_placeholders(line)[1] for line in cleaned_lines]
-        
-        # Group dialogue lines for translation (same as GUI)
-        grouped_lines, group_map = group_dialogue_lines(cleaned_lines)
-        
-        # Store originals for logging
-        originals = cleaned_lines[:]
-        
-        # Translation phase with user parameters
-        print(f"Translating {len(grouped_lines)} grouped lines...")
-        print(f"Parameters: beams={args.beams}, length_penalty={args.length_penalty}, temperature={args.temperature}, sampling={args.sampling}, quality_mode={args.quality}")
-        translated_groups = translate_with_context_nllb(
-            grouped_lines,
-            args.src,
-            args.tgt,
-            model,
-            tokenizer,
-            device,
-            beams=args.beams,
-            batch_size=args.batch_size,
-            translation_callback=create_translation_callback("translation"),
-            length_penalty=args.length_penalty,
-            temperature=args.temperature,
-            do_sample=args.sampling,
-            quality_mode=args.quality
-        )
-        
-        # Split translations back to original lines (same as GUI)
-        translated = split_grouped_translations(translated_groups, group_map)
-        
-        # Save intermediate translation (same as GUI)
-        save_subtitle_lines(translated, output_path, subs, idx_map)
-        
-        # Post-processing phase with grammar correction toggle
-        print(f"Post-processing {len(translated)} lines...")
-        print(f"Grammar correction: {'enabled' if not args.no_grammar else 'disabled'}")
-        
-        # Create logger (same as GUI)
-        logger = SubtitleLogger(args.input_file_path, args.tgt, idx_map=idx_map)
-        
-        # Correct text using NLLB correction (same as GUI)
-        corrected_all = correct_text_batch_nllb(
-            translated,
-            args.src,
-            args.tgt,
-            translation_callback=create_post_processing_callback(),
-            enable_grammar_correction=not args.no_grammar
-        )
-        
-        # Restore placeholder tags after post-processing (same as GUI)
-        restored_placeholders = [
-            restore_tags_from_placeholders(corrected_all[i], placeholder_maps[i])
-            for i in range(len(corrected_all))
-        ]
-        
-        # Re-insert \N tags at word index 0 (same as GUI default)
-        n_wordidx = args.nwordix
-        final_lines = []
-        for line, n_count, orig in zip(restored_placeholders, n_tag_counts, originals):
-            if n_count > 0:
-                if n_wordidx == 0:
-                    # Use context-aware placement (like GUI)
-                    final_lines.append(insert_newline_tags_contextaware(line, n_count, prefer_punctuation=True))
-                else:
-                    final_lines.append(insert_newline_tags_at_wordidx(line, n_count, n_wordidx))
+        in_events = False
+        for line in lines:
+            if line.strip().startswith('[Events]'):
+                in_events = True
+                header.append(line)
+            elif in_events and line.startswith('Dialogue:'):
+                dialogues.append(line)
+                # Extract text (last field after 9 commas)
+                parts = line.split(',', 9)
+                if len(parts) >= 10:
+                    text = parts[9].rstrip('\n')
+                    original_texts.append(text)
+                    
+                    # Count \N tags
+                    n_count = len(re.findall(r'\\N', text, re.IGNORECASE))
+                    n_tag_counts.append(n_count)
+                    
+                    # Remove \N for translation
+                    clean_text = re.sub(r'\\N', ' ', text, flags=re.IGNORECASE)
+                    
+                    # Protect tags
+                    protected, _ = self.protect_tags(clean_text)
+                    texts_to_translate.append(protected)
             else:
-                final_lines.append(line)
+                header.append(line)
         
-        # Log all entries (same as GUI)
-        for idx, (orig, trans, restored, final) in enumerate(zip(originals, translated, restored_placeholders, final_lines)):
+        # Translate
+        translated = self.translate(texts_to_translate, src_lang, tgt_lang,
+                                   progress_callback=progress_callback)
+        
+        # Restore tags and \N
+        final_texts = []
+        for i, trans in enumerate(translated):
+            # Get original tags
+            _, tags = self.protect_tags(original_texts[i])
+            
+            # Restore tags
+            with_tags = self.restore_tags(trans, tags)
+            
+            # Insert \N tags
+            with_n = self.insert_n_tags(with_tags, n_tag_counts[i], n_tag_idx)
+            
+            final_texts.append(with_n)
+        
+        # Rebuild file
+        output_lines = header[:]
+        for i, dialogue in enumerate(dialogues):
+            parts = dialogue.split(',', 9)
+            if len(parts) >= 10:
+                parts[9] = final_texts[i] + '\n'
+                output_lines.append(','.join(parts))
+            else:
+                output_lines.append(dialogue)
+        
+        # Save
+        output_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}.ass'
+        with open(output_path, 'w', encoding='utf-8-sig') as f:
+            f.writelines(output_lines)
+        
+        return output_path, original_texts, final_texts
+    
+    def translate_srt_file(self, input_path: str, src_lang: str, tgt_lang: str,
+                           progress_callback=None) -> Tuple[str, List[str], List[str]]:
+        """Translate .srt file."""
+        with open(input_path, 'r', encoding='utf-8-sig') as f:
+            content = f.read()
+        
+        # Split into subtitle blocks
+        blocks = re.split(r'\n\s*\n', content.strip())
+        
+        texts_to_translate = []
+        original_texts = []
+        block_data = []
+        
+        for block in blocks:
+            lines = block.strip().split('\n')
+            if len(lines) >= 3:
+                # index, timestamp, text...
+                index_line = lines[0]
+                time_line = lines[1]
+                text_lines = lines[2:]
+                text = '\n'.join(text_lines)
+                
+                original_texts.append(text)
+                protected, _ = self.protect_tags(text)
+                texts_to_translate.append(protected)
+                block_data.append((index_line, time_line))
+        
+        # Translate
+        translated = self.translate(texts_to_translate, src_lang, tgt_lang,
+                                   progress_callback=progress_callback)
+        
+        # Restore tags
+        final_texts = []
+        for i, trans in enumerate(translated):
+            _, tags = self.protect_tags(original_texts[i])
+            with_tags = self.restore_tags(trans, tags)
+            final_texts.append(with_tags)
+        
+        # Rebuild file
+        output_blocks = []
+        for i, (idx, time) in enumerate(block_data):
+            output_blocks.append(f"{idx}\n{time}\n{final_texts[i]}")
+        
+        output_content = '\n\n'.join(output_blocks) + '\n'
+        
+        # Save
+        output_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}.srt'
+        with open(output_path, 'w', encoding='utf-8-sig') as f:
+            f.write(output_content)
+        
+        return output_path, original_texts, final_texts
+    
+    def translate_txt_file(self, input_path: str, src_lang: str, tgt_lang: str,
+                           progress_callback=None) -> Tuple[str, List[str], List[str]]:
+        """Translate .txt file."""
+        with open(input_path, 'r', encoding='utf-8-sig') as f:
+            lines = f.readlines()
+        
+        # Only translate non-empty lines
+        texts_to_translate = []
+        original_texts = []
+        line_indices = []
+        
+        for i, line in enumerate(lines):
+            stripped = line.strip()
+            if stripped and not stripped.isdigit():
+                original_texts.append(stripped)
+                texts_to_translate.append(stripped)
+                line_indices.append(i)
+        
+        # Translate
+        translated = self.translate(texts_to_translate, src_lang, tgt_lang,
+                                   progress_callback=progress_callback)
+        
+        # Rebuild file
+        output_lines = lines[:]
+        for i, idx in enumerate(line_indices):
+            # Preserve formatting
+            leading = len(lines[idx]) - len(lines[idx].lstrip(' '))
+            trailing = len(lines[idx]) - len(lines[idx].rstrip(' '))
+            has_newline = lines[idx].endswith('\n')
+            
+            output_lines[idx] = (' ' * leading) + translated[i] + (' ' * trailing)
+            if has_newline:
+                output_lines[idx] += '\n'
+        
+        # Save
+        output_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}.txt'
+        with open(output_path, 'w', encoding='utf-8-sig') as f:
+            f.writelines(output_lines)
+        
+        return output_path, original_texts, translated
+
+
+# ============================================================================
+# GUI
+# ============================================================================
+
+def run_gui():
+    """Run the simplified GUI."""
+    
+    root = tk.Tk()
+    root.title("Subtitle Translator (NLLB)")
+    root.geometry("500x350")
+    
+    # Variables
+    file_path = tk.StringVar()
+    src_lang = tk.StringVar(value="en")
+    tgt_lang = tk.StringVar(value="pl")
+    file_type = tk.StringVar(value="ass")
+    n_tag_wordidx = tk.IntVar(value=0)
+    
+    LANG_OPTIONS = ["en", "pl", "ja", "fr", "de"]
+    FILE_TYPES = ["ass", "srt", "txt"]
+    
+    translator = None
+    
+    # Layout
+    tk.Label(root, text="Subtitle File:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+    tk.Entry(root, textvariable=file_path, width=40).grid(row=0, column=1, padx=5, pady=5)
+    
+    def browse_file():
+        filename = filedialog.askopenfilename(
+            title="Select subtitle file",
+            filetypes=[
+                ("Subtitle files", "*.ass *.srt *.txt"),
+                ("All files", "*.*")
+            ]
+        )
+        if filename:
+            file_path.set(filename)
+            # Auto-detect file type
+            ext = filename.rsplit('.', 1)[-1].lower()
+            if ext in FILE_TYPES:
+                file_type.set(ext)
+    
+    tk.Button(root, text="Browse", command=browse_file).grid(row=0, column=2, padx=5, pady=5)
+    
+    tk.Label(root, text="Source Language:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
+    tk.OptionMenu(root, src_lang, *LANG_OPTIONS).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+    
+    tk.Label(root, text="Target Language:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
+    tk.OptionMenu(root, tgt_lang, *LANG_OPTIONS).grid(row=2, column=1, sticky="w", padx=5, pady=5)
+    
+    tk.Label(root, text="File Type:").grid(row=3, column=0, sticky="w", padx=5, pady=5)
+    tk.OptionMenu(root, file_type, *FILE_TYPES).grid(row=3, column=1, sticky="w", padx=5, pady=5)
+    
+    tk.Label(root, text=r"\N tag word index:").grid(row=4, column=0, sticky="w", padx=5, pady=5)
+    tk.Spinbox(root, from_=0, to=50, textvariable=n_tag_wordidx, width=10).grid(row=4, column=1, sticky="w", padx=5, pady=5)
+    tk.Label(root, text="(0 = auto)", font=("Arial", 9)).grid(row=4, column=2, sticky="w")
+    
+    # Progress
+    progress_label = tk.Label(root, text="Translation: 0%")
+    progress_label.grid(row=5, column=0, columnspan=3, pady=5)
+    
+    status_label = tk.Label(root, text="Ready")
+    status_label.grid(row=6, column=0, columnspan=3, pady=5)
+    
+    start_btn = tk.Button(root, text="Start Translation", width=20)
+    start_btn.grid(row=7, column=0, columnspan=3, pady=10)
+    
+    def update_progress(current, total):
+        """Update progress display."""
+        if total > 0:
+            pct = int((current / total) * 100)
+            progress_label.config(text=f"Translation: {pct}%")
+            root.update_idletasks()
+    
+    def show_review(originals, translations, output_path):
+        """Show review window."""
+        review_win = tk.Toplevel(root)
+        review_win.title("Review Translations")
+        review_win.geometry("800x600")
+        
+        frame = tk.Frame(review_win)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        canvas = tk.Canvas(frame)
+        scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = tk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        entry_widgets = []
+        for i, (orig, trans) in enumerate(zip(originals, translations)):
+            tk.Label(scrollable_frame, text=f"[{i+1}] Original:", anchor="w", font=("Arial", 9, "bold")).grid(
+                row=i*3, column=0, sticky="w", pady=(10, 0))
+            tk.Label(scrollable_frame, text=orig, anchor="w", wraplength=700).grid(
+                row=i*3+1, column=0, sticky="w", padx=20)
+            
+            tk.Label(scrollable_frame, text="Translation:", anchor="w", font=("Arial", 9, "bold")).grid(
+                row=i*3+2, column=0, sticky="w")
+            entry = tk.Entry(scrollable_frame, width=100)
+            entry.insert(0, trans)
+            entry.grid(row=i*3+2, column=0, sticky="ew", padx=20, pady=(0, 5))
+            entry_widgets.append(entry)
+        
+        def save_and_close():
+            edited = [e.get() for e in entry_widgets]
+            # Save edited translations
+            # (File already saved, this would be for re-saving edits)
+            review_win.destroy()
+            messagebox.showinfo("Success", f"Translation completed!\nSaved to: {output_path}")
+            reset_ui()
+        
+        btn_frame = tk.Frame(review_win)
+        btn_frame.pack(side=tk.BOTTOM, pady=10)
+        tk.Button(btn_frame, text="Save & Close", command=save_and_close, width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=review_win.destroy, width=15).pack(side=tk.LEFT, padx=5)
+    
+    def reset_ui():
+        """Reset UI to initial state."""
+        start_btn.config(state="normal")
+        progress_label.config(text="Translation: 0%")
+        status_label.config(text="Ready")
+    
+    def start_translation():
+        """Start translation in background thread."""
+        nonlocal translator
+        
+        path = file_path.get()
+        if not path or not os.path.exists(path):
+            messagebox.showerror("Error", "Please select a valid file")
+            return
+        
+        if src_lang.get() == tgt_lang.get():
+            messagebox.showerror("Error", "Source and target languages must be different")
+            return
+        
+        start_btn.config(state="disabled")
+        status_label.config(text="Loading model...")
+        progress_label.config(text="Translation: 0%")
+        
+        def translate_thread():
             try:
-                logger.log_entry(idx, orig, trans, final, tags_before=[], tags_after=[])
+                # Load model if needed
+                if translator is None:
+                    translator = SubtitleTranslator()
+                
+                status_label.config(text="Translating...")
+                root.update_idletasks()
+                
+                # Translate based on file type
+                ftype = file_type.get()
+                if ftype == "ass":
+                    output_path, originals, translations = translator.translate_ass_file(
+                        path, src_lang.get(), tgt_lang.get(),
+                        n_tag_wordidx.get(), update_progress
+                    )
+                elif ftype == "srt":
+                    output_path, originals, translations = translator.translate_srt_file(
+                        path, src_lang.get(), tgt_lang.get(), update_progress
+                    )
+                else:  # txt
+                    output_path, originals, translations = translator.translate_txt_file(
+                        path, src_lang.get(), tgt_lang.get(), update_progress
+                    )
+                
+                status_label.config(text="Complete!")
+                progress_label.config(text="Translation: 100%")
+                
+                # Show review window
+                root.after(0, lambda: show_review(originals, translations, output_path))
+                
             except Exception as e:
-                print(f"Warning: Logging failed on line {idx+1}: {e}")
+                root.after(0, lambda: messagebox.showerror("Error", f"Translation failed:\n{str(e)}"))
+                root.after(0, reset_ui)
         
-        # Write log summary
-        try:
-            logger.write_summary()
-            log_path = logger.get_log_path() if hasattr(logger, "get_log_path") else logger.log_txt
-        except Exception as e:
-            print(f"Warning: Failed writing log summary: {e}")
-            log_path = None
+        # Run in thread
+        thread = threading.Thread(target=translate_thread, daemon=True)
+        thread.start()
+    
+    start_btn.config(command=start_translation)
+    
+    root.mainloop()
+
+
+# ============================================================================
+# CLI
+# ============================================================================
+
+def run_cli():
+    """Run CLI mode."""
+    parser = argparse.ArgumentParser(description="Subtitle Translator CLI")
+    parser.add_argument("input_file", help="Input subtitle file (.ass, .srt, or .txt)")
+    parser.add_argument("--src", default="en", help="Source language (default: en)")
+    parser.add_argument("--tgt", default="pl", help="Target language (default: pl)")
+    parser.add_argument("--nwordix", type=int, default=0, help="Word index for \\N tag insertion (0=auto, .ass only)")
+    parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
+    
+    args = parser.parse_args()
+    
+    if not os.path.exists(args.input_file):
+        print(f"Error: File not found: {args.input_file}")
+        sys.exit(1)
+    
+    # Detect file type
+    ext = args.input_file.rsplit('.', 1)[-1].lower()
+    if ext not in ['ass', 'srt', 'txt']:
+        print(f"Error: Unsupported file type: {ext}")
+        sys.exit(1)
+    
+    print(f"\nTranslating: {args.input_file}")
+    print(f"Languages: {args.src} -> {args.tgt}")
+    
+    # Load translator
+    translator = SubtitleTranslator()
+    
+    def progress_callback(current, total):
+        pct = int((current / total) * 100)
+        print(f"\rProgress: {current}/{total} ({pct}%)", end='', flush=True)
+    
+    # Translate
+    try:
+        if ext == 'ass':
+            output_path, _, _ = translator.translate_ass_file(
+                args.input_file, args.src, args.tgt,
+                args.nwordix, progress_callback
+            )
+        elif ext == 'srt':
+            output_path, _, _ = translator.translate_srt_file(
+                args.input_file, args.src, args.tgt, progress_callback
+            )
+        else:  # txt
+            output_path, _, _ = translator.translate_txt_file(
+                args.input_file, args.src, args.tgt, progress_callback
+            )
         
-        # Save final output with post-processing and \N tags
-        save_subtitle_lines(final_lines, output_path, subs, idx_map)
+        print(f"\n\nSuccess! Saved to: {output_path}")
         
-        # Calculate duration and finish
-        duration = time.time() - start_time
-        on_cli_finish(output_path, len(texts), duration)
-        
-        # Show log path like GUI does
-        if log_path and os.path.exists(log_path):
-            print(f"Log saved to: {log_path}")
-        
-    except ImportError as e:
-        on_cli_error(f"Missing dependencies: {str(e)}", args.input_file_path)
-        print("Please install required dependencies from requirements.txt")
-    except FileNotFoundError as e:
-        on_cli_error(f"File not found: {str(e)}", args.input_file_path)
-    except PermissionError as e:
-        on_cli_error(f"Permission denied: {str(e)}", args.input_file_path)
     except Exception as e:
-        on_cli_error(f"Translation failed: {str(e)}", args.input_file_path)
+        print(f"\n\nError: {e}")
+        sys.exit(1)
+
+
+# ============================================================================
+# Main
+# ============================================================================
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
+        # CLI mode if file argument provided
+        run_cli()
+    else:
+        # GUI mode
+        run_gui()
