@@ -63,14 +63,31 @@ class SubtitleTranslator:
             return f"<TAG{len(tags)-1}>"
         
         protected = self.TAG_PATTERN.sub(replacer, text)
+        
+        # Debug logging
+        if tags:
+            print(f"[TAG DEBUG] protect_tags:")
+            print(f"  Input:     {repr(text)}")
+            print(f"  Protected: {repr(protected)}")
+            print(f"  Tags:      {tags}")
+        
         return protected, tags
     
     def restore_tags(self, text: str, tags: List[str]) -> str:
         """Restore tags from placeholders."""
+        original_text = text
         for i, tag in enumerate(tags):
             text = text.replace(f"<TAG{i}>", tag)
         # Clean any remaining placeholders
         text = re.sub(r'<TAG\d+>', '', text)
+        
+        # Debug logging
+        if tags:
+            print(f"[TAG DEBUG] restore_tags:")
+            print(f"  Input:    {repr(original_text)}")
+            print(f"  Tags:     {tags}")
+            print(f"  Restored: {repr(text)}")
+        
         return text
     
     def insert_n_tags(self, text: str, n_count: int, word_idx: int = 0) -> str:
@@ -93,6 +110,24 @@ class SubtitleTranslator:
                 word_idx += 1
         
         return ' '.join(words)
+    
+    def _write_translation_log(self, log_path: str, originals: List[str], translations: List[str]):
+        """Write translation log file with original and translated text side-by-side."""
+        with open(log_path, 'w', encoding='utf-8') as f:
+            f.write("=" * 100 + "\n")
+            f.write("TRANSLATION LOG\n")
+            f.write("=" * 100 + "\n\n")
+            
+            for i, (orig, trans) in enumerate(zip(originals, translations), 1):
+                f.write(f"[Line {i}]\n")
+                f.write(f"Original:    {orig}\n")
+                f.write(f"Translation: {trans}\n")
+                f.write("-" * 100 + "\n\n")
+            
+            f.write("=" * 100 + "\n")
+            f.write(f"Total lines: {len(originals)}\n")
+        
+        print(f"Translation log saved to: {log_path}")
     
     def translate(self, texts: List[str], src_lang: str, tgt_lang: str,
                   batch_size: Optional[int] = None, num_beams: Optional[int] = None, progress_callback=None) -> List[str]:
@@ -139,6 +174,7 @@ class SubtitleTranslator:
         dialogues = []
         texts_to_translate = []
         original_texts = []
+        all_tags = []  # Store tags for each line
         n_tag_counts = []
         
         in_events = False
@@ -161,8 +197,9 @@ class SubtitleTranslator:
                     # Remove \N for translation
                     clean_text = re.sub(r'\\N', ' ', text, flags=re.IGNORECASE)
                     
-                    # Protect tags
-                    protected, _ = self.protect_tags(clean_text)
+                    # Protect tags and store them
+                    protected, tags = self.protect_tags(clean_text)
+                    all_tags.append(tags)
                     texts_to_translate.append(protected)
             else:
                 header.append(line)
@@ -174,16 +211,17 @@ class SubtitleTranslator:
         # Restore tags and \N
         final_texts = []
         for i, trans in enumerate(translated):
-            # Get original tags
-            _, tags = self.protect_tags(original_texts[i])
-            
-            # Restore tags
-            with_tags = self.restore_tags(trans, tags)
+            # Restore the original tags that were protected
+            with_tags = self.restore_tags(trans, all_tags[i])
             
             # Insert \N tags
             with_n = self.insert_n_tags(with_tags, n_tag_counts[i], n_tag_idx)
             
             final_texts.append(with_n)
+        
+        # Create log file
+        log_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}_log.txt'
+        self._write_translation_log(log_path, original_texts, final_texts)
         
         # Rebuild file
         output_lines = header[:]
@@ -235,10 +273,16 @@ class SubtitleTranslator:
         
         # Restore tags
         final_texts = []
+        all_tags = []
         for i, trans in enumerate(translated):
             _, tags = self.protect_tags(original_texts[i])
+            all_tags.append(tags)
             with_tags = self.restore_tags(trans, tags)
             final_texts.append(with_tags)
+        
+        # Create log file
+        log_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}_log.txt'
+        self._write_translation_log(log_path, original_texts, final_texts)
         
         # Rebuild file
         output_blocks = []
@@ -276,6 +320,10 @@ class SubtitleTranslator:
         translated = self.translate(texts_to_translate, src_lang, tgt_lang,
                                    progress_callback=progress_callback)
         
+        # Create log file
+        log_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}_log.txt'
+        self._write_translation_log(log_path, original_texts, translated)
+        
         # Rebuild file
         output_lines = lines[:]
         for i, idx in enumerate(line_indices):
@@ -305,7 +353,7 @@ def run_gui():
     
     root = tk.Tk()
     root.title("Subtitle Translator (NLLB)")
-    root.geometry("500x300")
+    root.geometry("580x280")
     
     # Variables
     file_path = tk.StringVar()
@@ -321,9 +369,12 @@ def run_gui():
     
     translator = None
     
-    # Layout
-    tk.Label(root, text="Subtitle File:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-    tk.Entry(root, textvariable=file_path, width=40).grid(row=0, column=1, padx=5, pady=5)
+    # File Selection Group
+    file_frame = tk.LabelFrame(root, text="File Selection", padx=5, pady=5)
+    file_frame.grid(row=0, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+    
+    tk.Label(file_frame, text="File:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
+    tk.Entry(file_frame, textvariable=file_path, width=48).grid(row=0, column=1, padx=2, pady=2)
     
     def browse_file():
         filename = filedialog.askopenfilename(
@@ -340,39 +391,43 @@ def run_gui():
             if ext in FILE_TYPES:
                 file_type.set(ext)
     
-    tk.Button(root, text="Browse", command=browse_file).grid(row=0, column=2, padx=5, pady=5)
+    tk.Button(file_frame, text="Browse", command=browse_file, width=8).grid(row=0, column=2, padx=2, pady=2)
     
-    tk.Label(root, text="Source Language:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-    tk.OptionMenu(root, src_lang, *LANG_OPTIONS).grid(row=1, column=1, sticky="w", padx=5, pady=5)
+    # Language & Format Group
+    lang_frame = tk.LabelFrame(root, text="Translation Settings", padx=5, pady=5)
+    lang_frame.grid(row=1, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
     
-    tk.Label(root, text="Target Language:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
-    tk.OptionMenu(root, tgt_lang, *LANG_OPTIONS).grid(row=2, column=1, sticky="w", padx=5, pady=5)
+    tk.Label(lang_frame, text="Source:").grid(row=0, column=0, sticky="w", padx=2)
+    tk.OptionMenu(lang_frame, src_lang, *LANG_OPTIONS).grid(row=0, column=1, sticky="w", padx=2)
     
-    tk.Label(root, text="File Type:").grid(row=3, column=0, sticky="w", padx=5, pady=5)
-    tk.OptionMenu(root, file_type, *FILE_TYPES).grid(row=3, column=1, sticky="w", padx=5, pady=5)
+    tk.Label(lang_frame, text="Target:").grid(row=0, column=2, sticky="w", padx=2)
+    tk.OptionMenu(lang_frame, tgt_lang, *LANG_OPTIONS).grid(row=0, column=3, sticky="w", padx=2)
     
-    tk.Label(root, text=r"\N tag word index:").grid(row=4, column=0, sticky="w", padx=5, pady=5)
-    tk.Spinbox(root, from_=0, to=50, textvariable=n_tag_wordidx, width=10).grid(row=4, column=1, sticky="w", padx=5, pady=5)
-    tk.Label(root, text="(0 = auto)", font=("Arial", 9)).grid(row=4, column=2, sticky="w")
+    tk.Label(lang_frame, text="Format:").grid(row=0, column=4, sticky="w", padx=2)
+    tk.OptionMenu(lang_frame, file_type, *FILE_TYPES).grid(row=0, column=5, sticky="w", padx=2)
     
-    # Batch size and beams controls
-    tk.Label(root, text="Batch size:").grid(row=5, column=0, sticky="w", padx=5, pady=5)
-    tk.Spinbox(root, from_=1, to=64, textvariable=batch_size_var, width=10).grid(row=5, column=1, sticky="w", padx=5, pady=5)
-    tk.Label(root, text="(Higher = faster, more VRAM)", font=("Arial", 9)).grid(row=5, column=2, sticky="w")
-
-    tk.Label(root, text="Beam search (num_beams):").grid(row=6, column=0, sticky="w", padx=5, pady=5)
-    tk.Spinbox(root, from_=1, to=10, textvariable=num_beams_var, width=10).grid(row=6, column=1, sticky="w", padx=5, pady=5)
-    tk.Label(root, text="(Higher = better quality, slower)", font=("Arial", 9)).grid(row=6, column=2, sticky="w")
+    # Advanced Options Group
+    adv_frame = tk.LabelFrame(root, text="Advanced Options", padx=5, pady=5)
+    adv_frame.grid(row=2, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+    
+    tk.Label(adv_frame, text=r"\N index:").grid(row=0, column=0, sticky="w", padx=2)
+    tk.Spinbox(adv_frame, from_=0, to=50, textvariable=n_tag_wordidx, width=6).grid(row=0, column=1, sticky="w", padx=2)
+    
+    tk.Label(adv_frame, text="Batch:").grid(row=0, column=2, sticky="w", padx=(10,2))
+    tk.Spinbox(adv_frame, from_=1, to=64, textvariable=batch_size_var, width=6).grid(row=0, column=3, sticky="w", padx=2)
+    
+    tk.Label(adv_frame, text="Beams:").grid(row=0, column=4, sticky="w", padx=(10,2))
+    tk.Spinbox(adv_frame, from_=1, to=10, textvariable=num_beams_var, width=6).grid(row=0, column=5, sticky="w", padx=2)
 
     # Progress
-    progress_label = tk.Label(root, text="Translation: 0%")
-    progress_label.grid(row=7, column=0, columnspan=3, pady=5)
+    progress_label = tk.Label(root, text="Translation: 0%", font=("Arial", 9))
+    progress_label.grid(row=3, column=0, columnspan=3, pady=2)
 
-    status_label = tk.Label(root, text="Ready")
-    status_label.grid(row=8, column=0, columnspan=3, pady=5)
+    status_label = tk.Label(root, text="Ready", font=("Arial", 9, "bold"))
+    status_label.grid(row=4, column=0, columnspan=3, pady=2)
 
-    start_btn = tk.Button(root, text="Start Translation", width=20)
-    start_btn.grid(row=9, column=0, columnspan=3, pady=10)
+    start_btn = tk.Button(root, text="Start Translation", width=20, bg="#4CAF50", fg="white")
+    start_btn.grid(row=5, column=0, columnspan=3, pady=10)
     
     def update_progress(current, total):
         """Update progress display."""
@@ -382,13 +437,22 @@ def run_gui():
             root.update_idletasks()
     
     def show_review(originals, translations, output_path):
-        """Show review window."""
+        """Show review window with side-by-side layout."""
         review_win = tk.Toplevel(root)
         review_win.title("Review Translations")
-        review_win.geometry("800x600")
+        review_win.geometry("1200x700")
         
+        # Header frame
+        header_frame = tk.Frame(review_win)
+        header_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Header labels
+        tk.Label(header_frame, text="Original", font=("Arial", 10, "bold"), width=50, anchor="w").pack(side=tk.LEFT, padx=5)
+        tk.Label(header_frame, text="Translation", font=("Arial", 10, "bold"), width=50, anchor="w").pack(side=tk.LEFT, padx=5)
+        
+        # Scrollable frame
         frame = tk.Frame(review_win)
-        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         canvas = tk.Canvas(frame)
         scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
@@ -405,19 +469,28 @@ def run_gui():
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
+        # Populate rows with two-column layout
         entry_widgets = []
         for i, (orig, trans) in enumerate(zip(originals, translations)):
-            tk.Label(scrollable_frame, text=f"[{i+1}] Original:", anchor="w", font=("Arial", 9, "bold")).grid(
-                row=i*3, column=0, sticky="w", pady=(10, 0))
-            tk.Label(scrollable_frame, text=orig, anchor="w", wraplength=700).grid(
-                row=i*3+1, column=0, sticky="w", padx=20)
+            # Row number
+            tk.Label(scrollable_frame, text=f"{i+1}", font=("Arial", 9), width=3, anchor="e").grid(
+                row=i, column=0, sticky="ne", padx=(0, 5), pady=2)
             
-            tk.Label(scrollable_frame, text="Translation:", anchor="w", font=("Arial", 9, "bold")).grid(
-                row=i*3+2, column=0, sticky="w")
-            entry = tk.Entry(scrollable_frame, width=100)
-            entry.insert(0, trans)
-            entry.grid(row=i*3+2, column=0, sticky="ew", padx=20, pady=(0, 5))
-            entry_widgets.append(entry)
+            # Original text (left column)
+            orig_text = tk.Text(scrollable_frame, width=50, height=2, wrap=tk.WORD, font=("Arial", 9))
+            orig_text.insert("1.0", orig)
+            orig_text.config(state="disabled", bg="#f0f0f0")
+            orig_text.grid(row=i, column=1, sticky="ew", padx=5, pady=2)
+            
+            # Translation (right column - editable)
+            trans_entry = tk.Entry(scrollable_frame, width=50, font=("Arial", 9))
+            trans_entry.insert(0, trans)
+            trans_entry.grid(row=i, column=2, sticky="ew", padx=5, pady=2)
+            entry_widgets.append(trans_entry)
+        
+        # Configure grid weights for resizing
+        scrollable_frame.grid_columnconfigure(1, weight=1)
+        scrollable_frame.grid_columnconfigure(2, weight=1)
         
         def save_and_close():
             edited = [e.get() for e in entry_widgets]
@@ -427,9 +500,10 @@ def run_gui():
             messagebox.showinfo("Success", f"Translation completed!\nSaved to: {output_path}")
             reset_ui()
         
+        # Bottom button frame
         btn_frame = tk.Frame(review_win)
         btn_frame.pack(side=tk.BOTTOM, pady=10)
-        tk.Button(btn_frame, text="Save & Close", command=save_and_close, width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Approve and Save", command=save_and_close, width=20, bg="#4CAF50", fg="white").pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Cancel", command=review_win.destroy, width=15).pack(side=tk.LEFT, padx=5)
     
     def reset_ui():
