@@ -440,7 +440,7 @@ def run_gui():
         """Show review window with side-by-side layout."""
         review_win = tk.Toplevel(root)
         review_win.title("Review Translations")
-        review_win.geometry("1200x700")
+        review_win.geometry("1200x900")
         
         # Header frame
         header_frame = tk.Frame(review_win)
@@ -448,7 +448,7 @@ def run_gui():
         
         # Header labels
         tk.Label(header_frame, text="Original", font=("Arial", 10, "bold"), width=50, anchor="w").pack(side=tk.LEFT, padx=5)
-        tk.Label(header_frame, text="Translation", font=("Arial", 10, "bold"), width=50, anchor="w").pack(side=tk.LEFT, padx=5)
+        tk.Label(header_frame, text="Translation", font=("Arial", 10, "bold"), width=70, anchor="w").pack(side=tk.LEFT, padx=5)
         
         # Scrollable frame
         frame = tk.Frame(review_win)
@@ -483,7 +483,7 @@ def run_gui():
             orig_text.grid(row=i, column=1, sticky="ew", padx=5, pady=2)
             
             # Translation (right column - editable)
-            trans_entry = tk.Entry(scrollable_frame, width=50, font=("Arial", 9))
+            trans_entry = tk.Entry(scrollable_frame, width=70, font=("Arial", 9))
             trans_entry.insert(0, trans)
             trans_entry.grid(row=i, column=2, sticky="ew", padx=5, pady=2)
             entry_widgets.append(trans_entry)
