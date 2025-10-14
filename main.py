@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 """
 Simplified Subtitle Translator - NLLB Model
@@ -14,13 +16,19 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 from typing import List, Tuple, Optional
 
+
 try:
     import torch
     from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
     from tqdm import tqdm
+    try:
+        from peft import PeftModel
+        PEFT_AVAILABLE = True
+    except ImportError:
+        PEFT_AVAILABLE = False
 except ImportError as e:
     print(f"Error: Missing dependencies - {e}")
-    print("Please install: pip install torch transformers tqdm")
+    print("Please install: pip install torch transformers tqdm peft")
     sys.exit(1)
 
 
@@ -39,56 +47,158 @@ class SubtitleTranslator:
         'de': 'deu_Latn',
     }
     
-    TAG_PATTERN = re.compile(r'(\{[^}]*\}|\\[NnHh])')
+    # Only match {\...} tags, not \N or similar linebreaks
+    TAG_ONLY = re.compile(r"({\\.*?})")
+    TAG_OR_ESCAPE = re.compile(r"({\\.*?})|(\\\[NnHhRr])")
     
-    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 8, num_beams: int = 2):
-        """Initialize translator with NLLB model."""
+    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 8, num_beams: int = 2, lora_adapter: Optional[str] = None):
+        """Initialize translator with NLLB model and optional LoRA adapter."""
         print(f"Loading model: {model_name}")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device}")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        if lora_adapter:
+            if not PEFT_AVAILABLE:
+                raise ImportError("peft is required for LoRA adapter support. Please install with: pip install peft")
+            print(f"Loading LoRA adapter from: {lora_adapter}")
+            self.model = PeftModel.from_pretrained(self.model, lora_adapter) # type: ignore
         self.model.to(self.device)
         self.model.eval()
         self.batch_size = batch_size
         self.num_beams = num_beams
         print("Model loaded!")
+
+    def group_dialogues_by_speaker(self, dialogue_lines):
+            """
+            Group consecutive dialogue lines by the same speaker (if names detected).
+            Expects a list of ASS dialogue lines (strings).
+            Returns a list of grouped dicts: {"name": ..., "lines": [...], "start": ..., "end": ...}
+            If any name is missing, returns None (no grouping).
+            """
+            grouped = []
+            current = None
+            for line in dialogue_lines:
+                parts = line.split(",", 9)
+                name = parts[4].strip() if len(parts) > 4 else ""
+                text = parts[9] if len(parts) > 9 else ""
+                start = parts[1] if len(parts) > 1 else ""
+                end = parts[2] if len(parts) > 2 else ""
+                if not name:
+                    # If any name is missing, skip grouping entirely
+                    return None
+                if current and current["name"] == name:
+                    current["lines"].append(text)
+                    current["end"] = end
+                else:
+                    if current:
+                        grouped.append(current)
+                    current = {"name": name, "lines": [text], "start": start, "end": end}
+            if current:
+                grouped.append(current)
+            return grouped
     
-    def protect_tags(self, text: str) -> Tuple[str, List[str]]:
-        """Replace tags with placeholders."""
-        tags = []
-        
-        def replacer(match):
-            tags.append(match.group(0))
-            return f"<TAG{len(tags)-1}>"
-        
-        protected = self.TAG_PATTERN.sub(replacer, text)
-        
-        # Debug logging
-        if tags:
-            print(f"[TAG DEBUG] protect_tags:")
-            print(f"  Input:     {repr(text)}")
-            print(f"  Protected: {repr(protected)}")
-            print(f"  Tags:      {tags}")
-        
-        return protected, tags
+    def protect_tags(self, text: str) -> Tuple[str, list]:
+        """
+        Replace all tags/escapes with unique placeholders and return:
+          clean_text, ph_map
+        ph_map: list of tuples (placeholder, original_value, original_pos)
+        """
+        ph_map = []
+        idx = 0
+
+        def repl(m):
+            nonlocal idx
+            placeholder = f"<TAGPH_{idx}>"
+            ph_map.append((placeholder, m.group(0), m.start()))
+            idx += 1
+            return placeholder
+
+        # Use re.sub to directly replace tags/escapes with placeholders, preserving all other text
+        clean_text = self.TAG_OR_ESCAPE.sub(repl, text)
+        return clean_text, ph_map
     
-    def restore_tags(self, text: str, tags: List[str]) -> str:
-        """Restore tags from placeholders."""
-        original_text = text
-        for i, tag in enumerate(tags):
-            text = text.replace(f"<TAG{i}>", tag)
-        # Clean any remaining placeholders
-        text = re.sub(r'<TAG\d+>', '', text)
+    def restore_tags(self, translated: str, ph_map: list) -> str:
+        """
+        Replace placeholders in translated text with original tags/escapes.
+        If a placeholder is missing (model dropped it), insert the tag at the
+        closest possible position based on semantic similarity and word boundaries.
+        """
+        import re
+        out = translated
+
+        # First pass: replace placeholders that survived translation
+        for placeholder, original, _pos in ph_map:
+            if placeholder in out:
+                out = out.replace(placeholder, original)
+
+        # Only insert if the original tag is not already present in the string
+        missing = []
+        for (p, o, pos) in ph_map:
+            if p not in translated and o not in out:
+                missing.append((p, o, pos))
+        missing.sort(key=lambda x: x[2])
+
+        def find_optimal_insertion_point(text: str, original_pos: int, original_total_len: int) -> int:
+            """
+            Find the best insertion point using relative positioning and word boundaries.
+            """
+            if not text.strip():
+                return 0
+            # Calculate relative position (0.0 to 1.0)
+            relative_pos = original_pos / max(original_total_len, 1)
+            target_char = int(relative_pos * len(text))
+            # Find nearest word boundary
+            words = [(m.group(), m.start(), m.end()) for m in re.finditer(r'\S+', text)]
+            if not words:
+                return 0
+            # Find the word closest to our target position
+            best_insert = 0
+            min_distance = float('inf')
+            for i, (word, start, end) in enumerate(words):
+                # Check both before and after this word
+                distances = [
+                    (abs(start - target_char), start),  # before word
+                    (abs(end - target_char), end)       # after word
+                ]
+                for distance, pos in distances:
+                    if distance < min_distance:
+                        min_distance = distance
+                        best_insert = pos
+            return best_insert
         
-        # Debug logging
-        if tags:
-            print(f"[TAG DEBUG] restore_tags:")
-            print(f"  Input:    {repr(original_text)}")
-            print(f"  Tags:     {tags}")
-            print(f"  Restored: {repr(text)}")
         
-        return text
+        def insert_tag_with_smart_spacing(text: str, pos: int, tag: str) -> str:
+            """
+            Insert tag with intelligent spacing to avoid collisions.
+            """
+            if pos <= 0:
+                # Insert at beginning
+                if text and text[0].isalnum():
+                    return tag + ' ' + text
+                return tag + text
+            elif pos >= len(text):
+                # Insert at end  
+                if text and text[-1].isalnum():
+                    return text + ' ' + tag
+                return text + tag
+            else:
+                # Insert in middle
+                before_char = text[pos-1] if pos > 0 else ' '
+                after_char = text[pos] if pos < len(text) else ' '
+                space_before = ' ' if before_char.isalnum() else ''
+                space_after = ' ' if after_char.isalnum() else ''
+                return text[:pos] + space_before + tag + space_after + text[pos:]
+
+        # Get original text length for relative positioning
+        original_total_len = max([pos for _, _, pos in ph_map] + [len(translated)]) if ph_map else len(translated)
+        for _placeholder, original, pos in missing:
+            insert_at = find_optimal_insertion_point(out, pos, original_total_len)
+            out = insert_tag_with_smart_spacing(out, insert_at, original)
+
+        # Remove any leftover placeholders like <TAGPH_0>, < TAGPH_0>, etc.
+        out = re.sub(r'<\s*TAGPH_\d+\s*>?', '', out)  # Remove all <TAGPH_n> variants with optional spaces and optional closing '>'
+        return out
     
     def insert_n_tags(self, text: str, n_count: int, word_idx: int = 0) -> str:
         r"""Insert \N tags at specified word index."""
@@ -111,22 +221,27 @@ class SubtitleTranslator:
         
         return ' '.join(words)
     
-    def _write_translation_log(self, log_path: str, originals: List[str], translations: List[str]):
-        """Write translation log file with original and translated text side-by-side."""
+    def _write_translation_log(self, log_path: str, originals: List[str], translations: List[str], setup_info: Optional[dict] = None, duration: Optional[float] = None):
+        """Write translation log file with original and translated text side-by-side, including setup info and duration."""
         with open(log_path, 'w', encoding='utf-8') as f:
             f.write("=" * 100 + "\n")
             f.write("TRANSLATION LOG\n")
             f.write("=" * 100 + "\n\n")
-            
+            # Write setup info if provided
+            if setup_info:
+                f.write("Translation Setup:\n")
+                for k, v in setup_info.items():
+                    f.write(f"  {k}: {v}\n")
+                f.write("\n")
+            if duration is not None:
+                f.write(f"Duration: {duration:.2f} seconds\n\n")
             for i, (orig, trans) in enumerate(zip(originals, translations), 1):
                 f.write(f"[Line {i}]\n")
                 f.write(f"Original:    {orig}\n")
                 f.write(f"Translation: {trans}\n")
                 f.write("-" * 100 + "\n\n")
-            
             f.write("=" * 100 + "\n")
             f.write(f"Total lines: {len(originals)}\n")
-        
         print(f"Translation log saved to: {log_path}")
     
     def translate(self, texts: List[str], src_lang: str, tgt_lang: str,
@@ -163,20 +278,27 @@ class SubtitleTranslator:
                 progress_callback(min(i + batch_size, total), total)
         return results
     
+
+    def _get_unique_path(self, base_path: str, ext: str) -> str:
+        """Return a unique file path by appending a number if needed."""
+        path = f"{base_path}{ext}"
+        i = 1
+        while os.path.exists(path):
+            path = f"{base_path}_{i}{ext}"
+            i += 1
+        return path
+
     def translate_ass_file(self, input_path: str, src_lang: str, tgt_lang: str,
                            n_tag_idx: int = 0, progress_callback=None) -> Tuple[str, List[str], List[str]]:
-        """Translate .ass file."""
+        """Translate .ass file, grouping by speaker if possible."""
+        import time
+        start_time = time.time()
         with open(input_path, 'r', encoding='utf-8-sig') as f:
             lines = f.readlines()
-        
+
         # Separate header and dialogue
         header = []
         dialogues = []
-        texts_to_translate = []
-        original_texts = []
-        all_tags = []  # Store tags for each line
-        n_tag_counts = []
-        
         in_events = False
         for line in lines:
             if line.strip().startswith('[Events]'):
@@ -184,75 +306,149 @@ class SubtitleTranslator:
                 header.append(line)
             elif in_events and line.startswith('Dialogue:'):
                 dialogues.append(line)
-                # Extract text (last field after 9 commas)
+            else:
+                header.append(line)
+
+        # Try grouping by speaker
+        grouped = self.group_dialogues_by_speaker(dialogues)
+
+        # Prepare output/log base paths
+        def get_unique_path(base_path, ext):
+            path = f"{base_path}{ext}"
+            i = 1
+            while os.path.exists(path):
+                path = f"{base_path}_{i}{ext}"
+                i += 1
+            return path
+        base = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}'
+        out_path = get_unique_path(base, '.ass')
+        log_path = get_unique_path(base, '_log.txt')
+
+        # Gather setup info
+        setup_info = {
+            "Model": getattr(self.model, 'name_or_path', str(type(self.model))),
+            "Batch size": self.batch_size,
+            "Num beams": self.num_beams,
+            "Device": self.device,
+            "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
+        }
+
+        if grouped:
+            # Grouped translation: merge lines for each speaker group
+            texts_to_translate = []
+            original_texts = []
+            all_tags = []
+            n_tag_counts = []
+            for group in grouped:
+                merged_text = ' '.join(group["lines"])
+                original_texts.append(merged_text)
+                n_count = sum(len(re.findall(r'\\N', t, re.IGNORECASE)) for t in group["lines"])
+                n_tag_counts.append(n_count)
+                clean_text = re.sub(r'\\N', ' ', merged_text, flags=re.IGNORECASE)
+                protected, tags = self.protect_tags(clean_text)
+                all_tags.append(tags)
+                texts_to_translate.append(protected)
+
+            # Translate
+            translated = self.translate(texts_to_translate, src_lang, tgt_lang,
+                                       progress_callback=progress_callback)
+
+            # Restore tags and \N
+            final_texts = []
+            for i, trans in enumerate(translated):
+                with_tags = self.restore_tags(trans, all_tags[i])
+                with_n = self.insert_n_tags(with_tags, n_tag_counts[i], n_tag_idx)
+                final_texts.append(with_n)
+
+            # Rebuild file: distribute translated group text back to original dialogue lines
+            output_lines = header[:]
+            idx = 0
+            for group, trans in zip(grouped, final_texts):
+                # Split translated text back into lines (naive split)
+                split_trans = trans.split(' ', len(group["lines"]) - 1)
+                for j, orig_line in enumerate(group["lines"]):
+                    parts = dialogues[idx].split(',', 9)
+                    if len(parts) >= 10:
+                        parts[9] = split_trans[j] + '\n'
+                        output_lines.append(','.join(parts))
+                    else:
+                        output_lines.append(dialogues[idx])
+                    idx += 1
+
+            # Create log file
+            duration = time.time() - start_time
+            self._write_translation_log(log_path, original_texts, final_texts, setup_info, duration)
+
+            # Save
+            with open(out_path, 'w', encoding='utf-8-sig') as f:
+                f.writelines(output_lines)
+
+            return out_path, original_texts, final_texts
+
+        else:
+            # Fallback: line-by-line translation as before
+            texts_to_translate = []
+            original_texts = []
+            all_tags = []  # Store tags for each line
+            n_tag_counts = []
+            for line in dialogues:
                 parts = line.split(',', 9)
                 if len(parts) >= 10:
                     text = parts[9].rstrip('\n')
                     original_texts.append(text)
-                    
-                    # Count \N tags
                     n_count = len(re.findall(r'\\N', text, re.IGNORECASE))
                     n_tag_counts.append(n_count)
-                    
-                    # Remove \N for translation
                     clean_text = re.sub(r'\\N', ' ', text, flags=re.IGNORECASE)
-                    
-                    # Protect tags and store them
                     protected, tags = self.protect_tags(clean_text)
                     all_tags.append(tags)
                     texts_to_translate.append(protected)
-            else:
-                header.append(line)
-        
-        # Translate
-        translated = self.translate(texts_to_translate, src_lang, tgt_lang,
-                                   progress_callback=progress_callback)
-        
-        # Restore tags and \N
-        final_texts = []
-        for i, trans in enumerate(translated):
-            # Restore the original tags that were protected
-            with_tags = self.restore_tags(trans, all_tags[i])
-            
-            # Insert \N tags
-            with_n = self.insert_n_tags(with_tags, n_tag_counts[i], n_tag_idx)
-            
-            final_texts.append(with_n)
-        
-        # Create log file
-        log_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}_log.txt'
-        self._write_translation_log(log_path, original_texts, final_texts)
-        
-        # Rebuild file
-        output_lines = header[:]
-        for i, dialogue in enumerate(dialogues):
-            parts = dialogue.split(',', 9)
-            if len(parts) >= 10:
-                parts[9] = final_texts[i] + '\n'
-                output_lines.append(','.join(parts))
-            else:
-                output_lines.append(dialogue)
-        
-        # Save
-        output_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}.ass'
-        with open(output_path, 'w', encoding='utf-8-sig') as f:
-            f.writelines(output_lines)
-        
-        return output_path, original_texts, final_texts
+
+            # Translate
+            translated = self.translate(texts_to_translate, src_lang, tgt_lang,
+                                       progress_callback=progress_callback)
+
+            # Restore tags and \N
+            final_texts = []
+            for i, trans in enumerate(translated):
+                with_tags = self.restore_tags(trans, all_tags[i])
+                with_n = self.insert_n_tags(with_tags, n_tag_counts[i], n_tag_idx)
+                final_texts.append(with_n)
+
+            # Create log file
+            duration = time.time() - start_time
+            self._write_translation_log(log_path, original_texts, final_texts, setup_info, duration)
+
+            # Rebuild file
+            output_lines = header[:]
+            for i, dialogue in enumerate(dialogues):
+                parts = dialogue.split(',', 9)
+                if len(parts) >= 10:
+                    parts[9] = final_texts[i] + '\n'
+                    output_lines.append(','.join(parts))
+                else:
+                    output_lines.append(dialogue)
+
+            # Save
+            with open(out_path, 'w', encoding='utf-8-sig') as f:
+                f.writelines(output_lines)
+
+            return out_path, original_texts, final_texts
     
     def translate_srt_file(self, input_path: str, src_lang: str, tgt_lang: str,
                            progress_callback=None) -> Tuple[str, List[str], List[str]]:
         """Translate .srt file."""
+        import time
+        start_time = time.time()
         with open(input_path, 'r', encoding='utf-8-sig') as f:
             content = f.read()
-        
+
         # Split into subtitle blocks
         blocks = re.split(r'\n\s*\n', content.strip())
-        
+
         texts_to_translate = []
         original_texts = []
         block_data = []
-        
+
         for block in blocks:
             lines = block.strip().split('\n')
             if len(lines) >= 3:
@@ -261,16 +457,16 @@ class SubtitleTranslator:
                 time_line = lines[1]
                 text_lines = lines[2:]
                 text = '\n'.join(text_lines)
-                
+
                 original_texts.append(text)
                 protected, _ = self.protect_tags(text)
                 texts_to_translate.append(protected)
                 block_data.append((index_line, time_line))
-        
+
         # Translate
         translated = self.translate(texts_to_translate, src_lang, tgt_lang,
                                    progress_callback=progress_callback)
-        
+
         # Restore tags
         final_texts = []
         all_tags = []
@@ -279,51 +475,94 @@ class SubtitleTranslator:
             all_tags.append(tags)
             with_tags = self.restore_tags(trans, tags)
             final_texts.append(with_tags)
-        
+
+        # Prepare output/log base paths
+        def get_unique_path(base_path, ext):
+            path = f"{base_path}{ext}"
+            i = 1
+            while os.path.exists(path):
+                path = f"{base_path}_{i}{ext}"
+                i += 1
+            return path
+        base = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}'
+        out_path = get_unique_path(base, '.srt')
+        log_path = get_unique_path(base, '_log.txt')
+
+        # Gather setup info
+        setup_info = {
+            "Model": getattr(self.model, 'name_or_path', str(type(self.model))),
+            "Batch size": self.batch_size,
+            "Num beams": self.num_beams,
+            "Device": self.device,
+            "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
+        }
+
         # Create log file
-        log_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}_log.txt'
-        self._write_translation_log(log_path, original_texts, final_texts)
-        
+        duration = time.time() - start_time
+        self._write_translation_log(log_path, original_texts, final_texts, setup_info, duration)
+
         # Rebuild file
         output_blocks = []
         for i, (idx, time) in enumerate(block_data):
             output_blocks.append(f"{idx}\n{time}\n{final_texts[i]}")
-        
+
         output_content = '\n\n'.join(output_blocks) + '\n'
-        
+
         # Save
-        output_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}.srt'
-        with open(output_path, 'w', encoding='utf-8-sig') as f:
+        with open(out_path, 'w', encoding='utf-8-sig') as f:
             f.write(output_content)
-        
-        return output_path, original_texts, final_texts
+
+        return out_path, original_texts, final_texts
     
     def translate_txt_file(self, input_path: str, src_lang: str, tgt_lang: str,
                            progress_callback=None) -> Tuple[str, List[str], List[str]]:
         """Translate .txt file."""
+        import time
+        start_time = time.time()
         with open(input_path, 'r', encoding='utf-8-sig') as f:
             lines = f.readlines()
-        
+
         # Only translate non-empty lines
         texts_to_translate = []
         original_texts = []
         line_indices = []
-        
+
         for i, line in enumerate(lines):
             stripped = line.strip()
             if stripped and not stripped.isdigit():
                 original_texts.append(stripped)
                 texts_to_translate.append(stripped)
                 line_indices.append(i)
-        
+
         # Translate
         translated = self.translate(texts_to_translate, src_lang, tgt_lang,
                                    progress_callback=progress_callback)
-        
+
+        # Prepare output/log base paths
+        def get_unique_path(base_path, ext):
+            path = f"{base_path}{ext}"
+            i = 1
+            while os.path.exists(path):
+                path = f"{base_path}_{i}{ext}"
+                i += 1
+            return path
+        base = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}'
+        out_path = get_unique_path(base, '.txt')
+        log_path = get_unique_path(base, '_log.txt')
+
+        # Gather setup info
+        setup_info = {
+            "Model": getattr(self.model, 'name_or_path', str(type(self.model))),
+            "Batch size": self.batch_size,
+            "Num beams": self.num_beams,
+            "Device": self.device,
+            "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
+        }
+
         # Create log file
-        log_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}_log.txt'
-        self._write_translation_log(log_path, original_texts, translated)
-        
+        duration = time.time() - start_time
+        self._write_translation_log(log_path, original_texts, translated, setup_info, duration)
+
         # Rebuild file
         output_lines = lines[:]
         for i, idx in enumerate(line_indices):
@@ -331,17 +570,16 @@ class SubtitleTranslator:
             leading = len(lines[idx]) - len(lines[idx].lstrip(' '))
             trailing = len(lines[idx]) - len(lines[idx].rstrip(' '))
             has_newline = lines[idx].endswith('\n')
-            
+
             output_lines[idx] = (' ' * leading) + translated[i] + (' ' * trailing)
             if has_newline:
                 output_lines[idx] += '\n'
-        
+
         # Save
-        output_path = input_path.rsplit('.', 1)[0] + f'_{tgt_lang}.txt'
-        with open(output_path, 'w', encoding='utf-8-sig') as f:
+        with open(out_path, 'w', encoding='utf-8-sig') as f:
             f.writelines(output_lines)
-        
-        return output_path, original_texts, translated
+
+        return out_path, original_texts, translated
 
 
 # ============================================================================
@@ -368,14 +606,15 @@ def run_gui():
     FILE_TYPES = ["ass", "srt", "txt"]
     
     translator = None
+    lora_adapter_path = tk.StringVar(value="")
     
     # File Selection Group
     file_frame = tk.LabelFrame(root, text="File Selection", padx=5, pady=5)
     file_frame.grid(row=0, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
-    
+
     tk.Label(file_frame, text="File:").grid(row=0, column=0, sticky="w", padx=2, pady=2)
     tk.Entry(file_frame, textvariable=file_path, width=48).grid(row=0, column=1, padx=2, pady=2)
-    
+
     def browse_file():
         filename = filedialog.askopenfilename(
             title="Select subtitle file",
@@ -390,8 +629,19 @@ def run_gui():
             ext = filename.rsplit('.', 1)[-1].lower()
             if ext in FILE_TYPES:
                 file_type.set(ext)
-    
+
     tk.Button(file_frame, text="Browse", command=browse_file, width=8).grid(row=0, column=2, padx=2, pady=2)
+
+    # LoRA Adapter Selection
+    tk.Label(file_frame, text="LoRA Adapter:").grid(row=1, column=0, sticky="w", padx=2, pady=2)
+    tk.Entry(file_frame, textvariable=lora_adapter_path, width=48).grid(row=1, column=1, padx=2, pady=2)
+
+    def browse_adapter():
+        dirname = filedialog.askdirectory(title="Select LoRA adapter directory")
+        if dirname:
+            lora_adapter_path.set(dirname)
+
+    tk.Button(file_frame, text="Browse", command=browse_adapter, width=8).grid(row=1, column=2, padx=2, pady=2)
     
     # Language & Format Group
     lang_frame = tk.LabelFrame(root, text="Translation Settings", padx=5, pady=5)
@@ -437,61 +687,82 @@ def run_gui():
             root.update_idletasks()
     
     def show_review(originals, translations, output_path):
-        """Show review window with side-by-side layout."""
+        """Show review window with side-by-side layout, optionally showing speaker names."""
         review_win = tk.Toplevel(root)
         review_win.title("Review Translations")
-        review_win.geometry("1200x900")
-        
+        review_win.geometry("1300x900")
+
+        # Try to get speaker names using group_dialogues_by_speaker
+        # Only works for .ass files, so try to get the file path from output_path
+        speaker_names = None
+        try:
+            if output_path.endswith('.ass'):
+                # Try to find the corresponding input file
+                input_path = output_path.rsplit('_', 1)[0] + '.ass'
+                if os.path.exists(input_path):
+                    with open(input_path, 'r', encoding='utf-8-sig') as f:
+                        lines = f.readlines()
+                    dialogues = [line for line in lines if line.startswith('Dialogue:')]
+                    grouped = SubtitleTranslator().group_dialogues_by_speaker(dialogues)
+                    if grouped and len(grouped) == len(originals):
+                        speaker_names = [g['name'] for g in grouped]
+        except Exception:
+            speaker_names = None
+
         # Header frame
         header_frame = tk.Frame(review_win)
         header_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        # Header labels
-        tk.Label(header_frame, text="Original", font=("Arial", 10, "bold"), width=50, anchor="w").pack(side=tk.LEFT, padx=5)
-        tk.Label(header_frame, text="Translation", font=("Arial", 10, "bold"), width=70, anchor="w").pack(side=tk.LEFT, padx=5)
-        
+
+        col = 0
+        if speaker_names:
+            tk.Label(header_frame, text="Speaker", font=("Arial", 10, "bold"), width=18, anchor="w").grid(row=0, column=col, padx=5)
+            col += 1
+        tk.Label(header_frame, text="Original", font=("Arial", 10, "bold"), width=50, anchor="w").grid(row=0, column=col, padx=5)
+        col += 1
+        tk.Label(header_frame, text="Translation", font=("Arial", 10, "bold"), width=70, anchor="w").grid(row=0, column=col, padx=5)
+
         # Scrollable frame
         frame = tk.Frame(review_win)
         frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
+
         canvas = tk.Canvas(frame)
         scrollbar = tk.Scrollbar(frame, orient="vertical", command=canvas.yview)
         scrollable_frame = tk.Frame(canvas)
-        
+
         scrollable_frame.bind(
             "<Configure>",
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-        
+
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
-        
+
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
-        
-        # Populate rows with two-column layout
+
+        # Populate rows with three-column layout if speaker_names, else two-column
         entry_widgets = []
         for i, (orig, trans) in enumerate(zip(originals, translations)):
-            # Row number
-            tk.Label(scrollable_frame, text=f"{i+1}", font=("Arial", 9), width=3, anchor="e").grid(
-                row=i, column=0, sticky="ne", padx=(0, 5), pady=2)
-            
+            col = 0
+            if speaker_names:
+                tk.Label(scrollable_frame, text=speaker_names[i], font=("Arial", 9), width=18, anchor="w", bg="#e8e8e8").grid(row=i, column=col, sticky="ew", padx=2, pady=2)
+                col += 1
             # Original text (left column)
             orig_text = tk.Text(scrollable_frame, width=50, height=2, wrap=tk.WORD, font=("Arial", 9))
             orig_text.insert("1.0", orig)
             orig_text.config(state="disabled", bg="#f0f0f0")
-            orig_text.grid(row=i, column=1, sticky="ew", padx=5, pady=2)
-            
+            orig_text.grid(row=i, column=col, sticky="ew", padx=5, pady=2)
+            col += 1
             # Translation (right column - editable)
             trans_entry = tk.Entry(scrollable_frame, width=70, font=("Arial", 9))
             trans_entry.insert(0, trans)
-            trans_entry.grid(row=i, column=2, sticky="ew", padx=5, pady=2)
+            trans_entry.grid(row=i, column=col, sticky="ew", padx=5, pady=2)
             entry_widgets.append(trans_entry)
-        
+
         # Configure grid weights for resizing
-        scrollable_frame.grid_columnconfigure(1, weight=1)
-        scrollable_frame.grid_columnconfigure(2, weight=1)
-        
+        for c in range(col+1):
+            scrollable_frame.grid_columnconfigure(c, weight=1)
+
         def save_and_close():
             edited = [e.get() for e in entry_widgets]
             # Save edited translations
@@ -499,7 +770,7 @@ def run_gui():
             review_win.destroy()
             messagebox.showinfo("Success", f"Translation completed!\nSaved to: {output_path}")
             reset_ui()
-        
+
         # Bottom button frame
         btn_frame = tk.Frame(review_win)
         btn_frame.pack(side=tk.BOTTOM, pady=10)
@@ -534,9 +805,11 @@ def run_gui():
             try:
                 # Load model if needed
                 if translator is None:
+                    lora_path = lora_adapter_path.get().strip() or None
                     translator = SubtitleTranslator(
                         batch_size=batch_size_var.get(),
-                        num_beams=num_beams_var.get()
+                        num_beams=num_beams_var.get(),
+                        lora_adapter=lora_path
                     )
 
                 status_label.config(text="Translating...")
@@ -582,6 +855,9 @@ def run_gui():
 # ============================================================================
 
 def run_cli():
+    # Suppress FutureWarning from huggingface_hub (e.g., resume_download)
+    import warnings
+    warnings.filterwarnings("ignore", category=FutureWarning, module="huggingface_hub.file_download")
     """Run CLI mode."""
     parser = argparse.ArgumentParser(description="Subtitle Translator CLI")
     parser.add_argument("input_file", help="Input subtitle file (.ass, .srt, or .txt)")
@@ -590,6 +866,7 @@ def run_cli():
     parser.add_argument("--nwordix", type=int, default=0, help="Word index for \\N tag insertion (0=auto, .ass only)")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
     parser.add_argument("--num-beams", type=int, default=2, help="Beam search width (default: 2)")
+    parser.add_argument("--lora-adapter", default=None, help="Path to LoRA adapter directory (optional)")
     
     args = parser.parse_args()
     
@@ -607,7 +884,7 @@ def run_cli():
     print(f"Languages: {args.src} -> {args.tgt}")
     
     # Load translator
-    translator = SubtitleTranslator(batch_size=args.batch_size, num_beams=args.num_beams)
+    translator = SubtitleTranslator(batch_size=args.batch_size, num_beams=args.num_beams, lora_adapter=args.lora_adapter)
     
     def progress_callback(current, total):
         pct = int((current / total) * 100)

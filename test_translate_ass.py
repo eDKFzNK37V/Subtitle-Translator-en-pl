@@ -81,7 +81,7 @@ class TestSubtitleTranslator(unittest.TestCase):
     def test_tag_pattern(self):
         """Test that tag pattern matches correctly."""
         import re
-        pattern = SubtitleTranslator.TAG_PATTERN
+        pattern = SubtitleTranslator.TAG_OR_ESCAPE
         
         # Test ASS tags
         self.assertTrue(pattern.search(r'{\pos(320,240)}'))

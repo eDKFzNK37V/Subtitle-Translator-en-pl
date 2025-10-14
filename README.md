@@ -1,179 +1,109 @@
-# Subtitle Translator (NLLB)
+# Subtitle Translator (English ↔ Polish, etc.)
 
-A simplified, self-contained subtitle translator using Facebook's NLLB-3.3B model.
+A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and `.txt` formats. Powered by NLLB models (Meta AI) with optional LoRA adapter support for custom fine-tuned models. Includes both a GUI and CLI.
+
+---
 
 ## Features
 
-- **Single file application** - All code in one main.py file (569 lines)
-- **GUI and CLI** - Both interfaces in one place
-- **Multi-format support** - Translate .ass, .srt, and .txt files
-- **Tag preservation** - Automatically protects subtitle formatting tags
-- **\N tag insertion** - Control line breaks in subtitles
-- **Translation review** - Edit translations before saving
-- **Threading** - Non-blocking GUI during translation
-- **Minimal dependencies** - Only 4 core packages needed
+- **Batch translation** with NLLB-200 (1.3B/3.3B) or your own LoRA adapters
+- **GUI** (Tkinter) and **CLI** modes
+- **Speaker grouping** for `.ass` files
+- **Subtitle tag protection** and restoration
+- **No file overwrite**: output files are auto-incremented if a name conflict exists
+- **Customizable batch size, beam search, and \N tag insertion**
+- **Translation log** for every run
+
+---
 
 ## Installation
 
-### 1. Install Python 3.8+
+1. **Clone the repository**
+2. **Install Python 3.8+**
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   # For LoRA support:
+   pip install peft
+   # For CUDA (optional):
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+   ```
+4. **Model auto-download:** The NLLB model will be automatically downloaded from HuggingFace (e.g. `facebook/nllb-200-1.3B` or `facebook/nllb-200-3.3B`) on first launch if not present locally. No manual download required unless you want to use a local/offline copy.
 
-### 2. Install dependencies
-
-For CUDA GPU support:
-```bash
-pip install -r requirements.txt
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-```
-
-For CPU only:
-```bash
-pip install -r requirements.txt
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-```
+---
 
 ## Usage
 
-### GUI Mode (Default)
+### GUI
 
-Simply run:
 ```bash
 python main.py
 ```
 
-The GUI provides:
-- File browser for subtitle selection
-- Source and target language selection
-- File type selection (.ass, .srt, .txt)
-- \N tag word index control (for .ass files)
-- Progress tracking
-- Translation review window
+- Select your subtitle file
+- (Optional) Select a LoRA adapter directory
+- Choose source/target language, format, and advanced options
+- Click **Start Translation**
 
-### CLI Mode
+### CLI
 
 ```bash
-python main.py <input_file> [options]
+python main.py input.ass --src en --tgt pl --batch-size 8 --num-beams 2 --lora-adapter ./outputs/lora_adapter
 ```
 
-**Options:**
-- `--src LANG` - Source language code (default: en)
-- `--tgt LANG` - Target language code (default: pl)
-- `--nwordix N` - Word index for \N tag insertion (default: 0=auto, .ass only)
-- `--batch-size N` - Batch size for translation (default: 8)
+- `--src` / `--tgt`: Language codes (en, pl, ja, fr, de)
+- `--lora-adapter`: Path to your LoRA adapter directory (optional)
+- `--nwordix`: Word index for \N tag insertion (ASS only)
 
-**Examples:**
-```bash
-# Basic translation
-python main.py subtitle.ass --src en --tgt pl
+### Output
 
-# Custom \N tag insertion
-python main.py subtitle.ass --nwordix 5
+- Translated file and log are saved in the same directory as the input.
+- If a file exists, a number is appended (e.g. `file_pl_1.ass`).
 
-# Translate SRT file
-python main.py subtitle.srt --src en --tgt ja
+---
 
-# Translate text file
-python main.py document.txt --src en --tgt fr
-```
+## Custom Model/Adapter
+
+- Place your LoRA adapter in a directory (e.g. `outputs/lora_adapter/`)
+- Select it in the GUI or pass `--lora-adapter` in CLI
+- The base model (e.g. `facebook/nllb-200-1.3B`) must be available locally or via HuggingFace
+
+---
 
 ## Supported Languages
 
-- English (en)
-- Polish (pl)
-- Japanese (ja)
-- French (fr)
-- German (de)
+- English (`en`)
+- Polish (`pl`)
+- Japanese (`ja`)
+- French (`fr`)
+- German (`de`)
 
-More languages can be added by extending the `LANG_CODES` dictionary in main.py.
+Add more by editing the `LANG_CODES` dictionary in `main.py`.
 
-## File Format Support
+---
 
-### .ass (Advanced SubStation Alpha)
-- Preserves all formatting tags (e.g., `{\pos(x,y)}`, `{\an8}`)
-- Supports \N tag insertion for line breaks
-- Maintains dialogue structure and timing
+## Troubleshooting
 
-### .srt (SubRip)
-- Preserves timing information
-- Maintains subtitle numbering
-- Supports basic formatting
+- **Model loading fails:** Check RAM/VRAM, CUDA, and model path
+- **peft not installed:** `pip install peft`
+- **GUI not launching:** Ensure Tkinter is installed (comes with most Python distributions)
+- **Output not appearing:** Check for errors in the terminal/console
 
-### .txt (Plain Text)
-- Translates non-empty lines
-- Preserves whitespace and formatting
-- Maintains line structure
-
-## Architecture
-
-The application consists of a single `main.py` file with three main components:
-
-1. **SubtitleTranslator Class** - Core translation engine
-   - NLLB model loading and management
-   - Tag protection/restoration
-   - \N tag insertion logic
-   - File format handlers
-
-2. **GUI Function** - Tkinter-based interface
-   - File browser
-   - Language selection
-   - Progress tracking
-   - Translation review window
-   - Threading for non-blocking operation
-
-3. **CLI Function** - Command-line interface
-   - Argument parsing
-   - Progress display
-   - Batch processing
-
-## Development
-
-### File Structure
-```
-main.py                 # Complete application (569 lines)
-requirements.txt        # Dependencies
-test_translate_ass.py   # Tests
-README.md              # This file
-```
-
-### Code Overview
-
-**Translation Flow:**
-1. Load subtitle file
-2. Extract text and tags
-3. Protect tags with placeholders
-4. Translate text using NLLB model
-5. Restore tags from placeholders
-6. Insert \N tags (for .ass files)
-7. Save translated file
-
-**GUI Flow:**
-1. User selects file and settings
-2. Translation runs in background thread
-3. Progress updates in main thread
-4. Review window shows results
-5. User can edit before final save
-
-## Changelog
-
-### Version 2.0 (Current)
-- Complete rewrite as single-file application
-- Reduced from 4,216 to 569 lines (87% reduction)
-- Removed 14 files, kept only main.py
-- Added .srt and .txt support
-- Simplified dependencies to 4 packages
-- Improved threading and progress tracking
-- Added translation review window
-
-### Version 1.0 (Previous)
-- Multi-file architecture (13 Python files)
-- Complex pipeline with multiple stages
-- Many unused features and dependencies
-- Limited to .ass files
+---
 
 ## License
 
-[Add your license here]
+MIT
+
+---
 
 ## Credits
 
-- Facebook AI Research for NLLB model
-- HuggingFace for Transformers library
+- Meta AI (NLLB)
+- HuggingFace Transformers
+- PEFT (LoRA)
+- tqdm
+
+---
+
+For more details, see `main.py` and `requirements.txt`.
