@@ -985,18 +985,91 @@ def run_gui():
             scrollable_frame.grid_columnconfigure(c, weight=1)
 
         def save_and_close():
+            """Save edited translations and finalize the output file."""
             edited = [e.get() for e in entry_widgets]
-            # Save edited translations
-            # (File already saved, this would be for re-saving edits)
-            review_win.destroy()
-            messagebox.showinfo("Success", f"Translation completed!\nSaved to: {output_path}")
-            reset_ui()
+            
+            # Apply edits to the output file
+            try:
+                # Re-write the output file with edited translations
+                # Read the current file to preserve structure
+                with open(output_path, 'r', encoding='utf-8-sig') as f:
+                    lines = f.readlines()
+                
+                # For .ass files, update dialogue lines
+                if output_path.endswith('.ass'):
+                    dialogue_idx = 0
+                    for i, line in enumerate(lines):
+                        if line.startswith('Dialogue:'):
+                            if dialogue_idx < len(edited):
+                                parts = line.split(',', 9)
+                                if len(parts) >= 10:
+                                    parts[9] = edited[dialogue_idx] + '\n'
+                                    lines[i] = ','.join(parts)
+                                dialogue_idx += 1
+                
+                # For .srt files, update subtitle text
+                elif output_path.endswith('.srt'):
+                    trans_idx = 0
+                    i = 0
+                    while i < len(lines):
+                        # Skip index and timestamp lines
+                        if lines[i].strip().isdigit():
+                            i += 2  # Skip index and timestamp
+                            # Now we're at the text - update it
+                            if i < len(lines) and trans_idx < len(edited):
+                                # Replace all text lines until empty line
+                                text_start = i
+                                while i < len(lines) and lines[i].strip():
+                                    i += 1
+                                # Replace the text block with edited version
+                                lines[text_start] = edited[trans_idx] + '\n'
+                                # Remove extra lines
+                                for j in range(text_start + 1, i):
+                                    lines[j] = ''
+                                trans_idx += 1
+                        i += 1
+                
+                # For .txt files, just replace the lines
+                elif output_path.endswith('.txt'):
+                    with open(output_path, 'w', encoding='utf-8') as f:
+                        for line in edited:
+                            f.write(line + '\n')
+                
+                # Write back the file if not .txt
+                if not output_path.endswith('.txt'):
+                    with open(output_path, 'w', encoding='utf-8-sig') as f:
+                        f.writelines(lines)
+                
+                review_win.destroy()
+                messagebox.showinfo("Success", f"Translation saved!\n\nOutput: {output_path}")
+                reset_ui()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save edits:\n{str(e)}")
+        
+        def cancel_translation():
+            """Cancel the translation and delete the output file."""
+            try:
+                # Delete the output file
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                # Delete the log file if it exists
+                log_path = output_path.rsplit('.', 1)[0] + '_log.txt'
+                if os.path.exists(log_path):
+                    os.remove(log_path)
+                
+                review_win.destroy()
+                messagebox.showinfo("Cancelled", "Translation cancelled. Output files deleted.")
+                reset_ui()
+            except Exception as e:
+                review_win.destroy()
+                messagebox.showerror("Error", f"Failed to clean up files:\n{str(e)}")
+                reset_ui()
 
         # Bottom button frame
         btn_frame = tk.Frame(review_win)
         btn_frame.pack(side=tk.BOTTOM, pady=10)
         tk.Button(btn_frame, text="Approve and Save", command=save_and_close, width=20, bg="#4CAF50", fg="white").pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Cancel", command=review_win.destroy, width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=cancel_translation, width=15, bg="#f44336", fg="white").pack(side=tk.LEFT, padx=5)
     
     def reset_ui():
         """Reset UI to initial state."""
