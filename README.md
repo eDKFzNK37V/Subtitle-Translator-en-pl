@@ -58,6 +58,9 @@ python main.py input.ass --src en --tgt pl --lora-adapter ./outputs/lora_adapter
 # With quantization for maximum speed
 python main.py input.ass --src en --tgt pl --quantize --quantize-bits 4
 
+# Enable speaker grouping (for .ass with character names)
+python main.py input.ass --src en --tgt pl --enable-grouping
+
 # Disable optimizations (CPU mode)
 python main.py input.ass --src en --tgt pl --no-fp16 --batch-size 4
 ```
@@ -68,6 +71,7 @@ python main.py input.ass --src en --tgt pl --no-fp16 --batch-size 4
 - `--fp16` / `--no-fp16`: Enable/disable half precision (default: enabled on GPU)
 - `--quantize`: Enable quantization for 2-3× speedup
 - `--quantize-bits`: Quantization bits (4 or 8)
+- `--enable-grouping`: Group by speaker for .ass files with rich character names
 - `--lora-adapter`: Path to LoRA adapter directory (optional)
 - `--nwordix`: Word index for \N tag insertion (ASS only)
 

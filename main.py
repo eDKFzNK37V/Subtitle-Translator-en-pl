@@ -132,42 +132,47 @@ class SubtitleTranslator:
         self.num_beams = num_beams
         print(f"Model loaded! (FP16: {self.use_fp16}, Quantized: {self.use_quantization})")
 
-    def group_dialogues_by_speaker(self, dialogue_lines):
+    def group_dialogues_by_speaker(self, dialogue_lines, enable_grouping=False):
             """
             Group consecutive dialogue lines by the same speaker (if names detected).
             Expects a list of ASS dialogue lines (strings).
             Returns a list of grouped dicts: {"name": ..., "lines": [...], "start": ..., "end": ...}
             If any name is missing, returns None (no grouping).
             
-            NOTE: Grouping is currently disabled as it causes issues with splitting
-            translated text back into individual dialogue lines. Line-by-line 
-            translation is more reliable.
-            """
-            # Grouping disabled - always return None to use line-by-line translation
-            return None
+            Args:
+                dialogue_lines: List of dialogue lines from .ass file
+                enable_grouping: Whether to enable speaker-based grouping (default: False)
             
-            # Original grouping code kept for reference but not used:
-            # grouped = []
-            # current = None
-            # for line in dialogue_lines:
-            #     parts = line.split(",", 9)
-            #     name = parts[4].strip() if len(parts) > 4 else ""
-            #     text = parts[9] if len(parts) > 9 else ""
-            #     start = parts[1] if len(parts) > 1 else ""
-            #     end = parts[2] if len(parts) > 2 else ""
-            #     if not name:
-            #         # If any name is missing, skip grouping entirely
-            #         return None
-            #     if current and current["name"] == name:
-            #         current["lines"].append(text)
-            #         current["end"] = end
-            #     else:
-            #         if current:
-            #             grouped.append(current)
-            #         current = {"name": name, "lines": [text], "start": start, "end": end}
-            # if current:
-            #     grouped.append(current)
-            # return grouped
+            NOTE: Grouping is disabled by default as it can cause issues with splitting
+            translated text back into individual dialogue lines. Enable only for files
+            with rich speaker names (e.g., anime with character names in each line).
+            """
+            # If grouping is disabled, return None to use line-by-line translation
+            if not enable_grouping:
+                return None
+            
+            # Grouping enabled - group by speaker
+            grouped = []
+            current = None
+            for line in dialogue_lines:
+                parts = line.split(",", 9)
+                name = parts[4].strip() if len(parts) > 4 else ""
+                text = parts[9] if len(parts) > 9 else ""
+                start = parts[1] if len(parts) > 1 else ""
+                end = parts[2] if len(parts) > 2 else ""
+                if not name:
+                    # If any name is missing, skip grouping entirely
+                    return None
+                if current and current["name"] == name:
+                    current["lines"].append(text)
+                    current["end"] = end
+                else:
+                    if current:
+                        grouped.append(current)
+                    current = {"name": name, "lines": [text], "start": start, "end": end}
+            if current:
+                grouped.append(current)
+            return grouped
     
     def protect_tags(self, text: str) -> Tuple[str, list]:
         import time
@@ -441,8 +446,19 @@ class SubtitleTranslator:
         return path
 
     def translate_ass_file(self, input_path: str, src_lang: str, tgt_lang: str,
-                           n_tag_idx: int = 0, progress_callback=None, preparing_callback=None) -> Tuple[str, List[str], List[str]]:
-        """Translate .ass file, grouping by speaker if possible."""
+                           n_tag_idx: int = 0, enable_grouping: bool = False, 
+                           progress_callback=None, preparing_callback=None) -> Tuple[str, List[str], List[str]]:
+        """Translate .ass file, optionally grouping by speaker.
+        
+        Args:
+            input_path: Path to input .ass file
+            src_lang: Source language code
+            tgt_lang: Target language code
+            n_tag_idx: Word index for \\N tag insertion
+            enable_grouping: Enable speaker-based grouping (default: False)
+            progress_callback: Callback for progress updates
+            preparing_callback: Callback for preparation status
+        """
         import time
         start_time = time.time()
         if preparing_callback:
@@ -469,8 +485,8 @@ class SubtitleTranslator:
         if preparing_callback:
             preparing_callback("Preparing translation batches... (Preparation time depends on the amount of lines in the file)")
 
-        # Try grouping by speaker
-        grouped = self.group_dialogues_by_speaker(dialogues)
+        # Try grouping by speaker (if enabled)
+        grouped = self.group_dialogues_by_speaker(dialogues, enable_grouping=enable_grouping)
 
         # Prepare output/log base paths
         def get_unique_path(base_path, ext):
@@ -788,6 +804,7 @@ def run_gui():
     use_fp16_var = tk.BooleanVar(value=True)
     use_quantization_var = tk.BooleanVar(value=False)
     quantization_bits_var = tk.IntVar(value=4)
+    enable_grouping_var = tk.BooleanVar(value=False)  # Disabled by default for safety
     
     LANG_OPTIONS = ["en", "pl", "ja", "fr", "de"]
     FILE_TYPES = ["ass", "srt", "txt"]
@@ -855,6 +872,9 @@ def run_gui():
     
     tk.Label(adv_frame, text="Beams:").grid(row=0, column=4, sticky="w", padx=(10,2))
     tk.Spinbox(adv_frame, from_=1, to=10, textvariable=num_beams_var, width=6).grid(row=0, column=5, sticky="w", padx=2)
+    
+    # Speaker grouping option (for .ass files with rich speaker names)
+    tk.Checkbutton(adv_frame, text="Group by speaker (.ass only)", variable=enable_grouping_var).grid(row=1, column=0, columnspan=3, sticky="w", padx=2, pady=(5,0))
 
     # Optimization Options Group
     opt_frame = tk.LabelFrame(root, text="Performance Optimizations", padx=5, pady=5)
@@ -1024,7 +1044,8 @@ def run_gui():
                 if ftype == "ass":
                     output_path, originals, translations = translator.translate_ass_file(
                         path, src_lang.get(), tgt_lang.get(),
-                        n_tag_wordidx.get(), update_progress, update_preparing
+                        n_tag_wordidx.get(), enable_grouping_var.get(),
+                        update_progress, update_preparing
                     )
                 elif ftype == "srt":
                     output_path, originals, translations = translator.translate_srt_file(
@@ -1068,6 +1089,7 @@ def run_cli():
     parser.add_argument("--src", default="en", help="Source language (default: en)")
     parser.add_argument("--tgt", default="pl", help="Target language (default: pl)")
     parser.add_argument("--nwordix", type=int, default=0, help="Word index for \\N tag insertion (0=auto, .ass only)")
+    parser.add_argument("--enable-grouping", action="store_true", help="Enable speaker-based grouping for .ass files with rich speaker names (default: disabled)")
     parser.add_argument("--batch-size", type=int, default=32, help="Initial batch size, adaptive on OOM (default: 32)")
     parser.add_argument("--num-beams", type=int, default=2, help="Beam search width (default: 2)")
     parser.add_argument("--lora-adapter", default=None, help="Path to LoRA adapter directory (optional)")
@@ -1114,7 +1136,8 @@ def run_cli():
         if ext == 'ass':
             output_path, _, _ = translator.translate_ass_file(
                 args.input_file, args.src, args.tgt,
-                args.nwordix, progress_callback, preparing_callback
+                args.nwordix, args.enable_grouping,
+                progress_callback, preparing_callback
             )
         elif ext == 'srt':
             output_path, _, _ = translator.translate_srt_file(

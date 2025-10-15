@@ -42,6 +42,34 @@ python main.py input.ass --src en --tgt pl --no-fp16
 
 # Custom batch size
 python main.py input.ass --src en --tgt pl --batch-size 64
+
+# Enable speaker grouping (for .ass files with rich character names)
+python main.py input.ass --src en --tgt pl --enable-grouping
+```
+
+### Speaker Grouping (.ass files only)
+
+**What it does**: Groups consecutive dialogue lines from the same speaker and translates them together.
+
+**When to use**:
+- Enable for anime subtitles with rich character names (e.g., "Gen", "Shizuku", "Kirito")
+- Better context for translations when the same character speaks multiple consecutive lines
+- Can improve translation quality by maintaining speaker context
+
+**When NOT to use**:
+- Files without speaker names or with generic names (e.g., "NTP", "TEXT")
+- Files where speaker names are missing or inconsistent
+- When you want individual line-by-line translation logs
+
+**How to enable**:
+- GUI: Check "Group by speaker (.ass only)" in Advanced Options
+- CLI: Add `--enable-grouping` flag
+
+**Note**: Disabled by default for reliability. Line-by-line translation is more predictable and works for all file types.
+
+```bash
+# Example with speaker grouping enabled
+python main.py anime_with_names.ass --src en --tgt pl --enable-grouping
 ```
 
 ## Optimization Details
