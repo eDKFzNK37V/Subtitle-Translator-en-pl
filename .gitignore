@@ -1,0 +1,9 @@
+# Ignore everything
+/*
+
+!README.md
+!main.py
+!requirements.txt
+!*.md
+!LICENSE
+!/.github/
