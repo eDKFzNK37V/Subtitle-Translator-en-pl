@@ -19,13 +19,18 @@ from typing import List, Tuple, Optional
 
 try:
     import torch
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, BitsAndBytesConfig
     from tqdm import tqdm
     try:
         from peft import PeftModel
         PEFT_AVAILABLE = True
     except ImportError:
         PEFT_AVAILABLE = False
+    try:
+        import bitsandbytes
+        BITSANDBYTES_AVAILABLE = True
+    except ImportError:
+        BITSANDBYTES_AVAILABLE = False
 except ImportError as e:
     print(f"Error: Missing dependencies - {e}")
     print("Please install: pip install torch transformers tqdm peft")
@@ -51,31 +56,103 @@ class SubtitleTranslator:
     TAG_ONLY = re.compile(r"({\\.*?})")
     TAG_OR_ESCAPE = re.compile(r"({\\.*?})|(\\\[NnHhRr])")
     
-    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 8, num_beams: int = 2, lora_adapter: Optional[str] = None):
-        """Initialize translator with NLLB model and optional LoRA adapter."""
+    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 32, num_beams: int = 2, 
+                 lora_adapter: Optional[str] = None, use_fp16: bool = True, use_quantization: bool = False,
+                 quantization_bits: int = 4):
+        """Initialize translator with NLLB model and optional LoRA adapter.
+        
+        Args:
+            model_name: HuggingFace model name
+            batch_size: Initial batch size (will be reduced on OOM)
+            num_beams: Number of beams for beam search
+            lora_adapter: Path to LoRA adapter directory
+            use_fp16: Use FP16 (half precision) for faster inference
+            use_quantization: Use quantization (4-bit or 8-bit)
+            quantization_bits: Bits for quantization (4 or 8)
+        """
         print(f"Loading model: {model_name}")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device}")
+        
+        # Store optimization settings
+        self.use_fp16 = use_fp16 and self.device == "cuda"
+        self.use_quantization = use_quantization and self.device == "cuda"
+        self.quantization_bits = quantization_bits
+        self.initial_batch_size = batch_size
+        
+        # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        
+        # Configure quantization if requested
+        quantization_config = None
+        if self.use_quantization:
+            if not BITSANDBYTES_AVAILABLE:
+                print("⚠️  Warning: bitsandbytes not available. Disabling quantization.")
+                print("   Install with: pip install bitsandbytes")
+                self.use_quantization = False
+            else:
+                print(f"Using {quantization_bits}-bit quantization")
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=(quantization_bits == 4),
+                    load_in_8bit=(quantization_bits == 8),
+                    bnb_4bit_compute_dtype=torch.float16 if quantization_bits == 4 else None,
+                )
+        
+        # Load model with quantization if enabled
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(
+            model_name,
+            quantization_config=quantization_config,
+            device_map="auto" if self.use_quantization else None
+        )
+        
+        # Apply LoRA adapter if provided
         if lora_adapter:
             if not PEFT_AVAILABLE:
                 raise ImportError("peft is required for LoRA adapter support. Please install with: pip install peft")
             print(f"Loading LoRA adapter from: {lora_adapter}")
             self.model = PeftModel.from_pretrained(self.model, lora_adapter) # type: ignore
-        self.model.to(self.device)
+        
+        # Move to device and optimize
+        if not self.use_quantization:
+            self.model.to(self.device)
+            # Apply FP16 if requested and not using quantization
+            if self.use_fp16:
+                print("Using FP16 (half precision)")
+                self.model = self.model.half()
+        
         self.model.eval()
+        
+        # Enable TF32 for faster matmul on Ampere+ GPUs
+        if self.device == "cuda" and torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            print("TF32 optimization enabled")
+        
         self.batch_size = batch_size
         self.num_beams = num_beams
-        print("Model loaded!")
+        print(f"Model loaded! (FP16: {self.use_fp16}, Quantized: {self.use_quantization})")
 
-    def group_dialogues_by_speaker(self, dialogue_lines):
+    @staticmethod
+    def group_dialogues_by_speaker(dialogue_lines, enable_grouping=False):
             """
             Group consecutive dialogue lines by the same speaker (if names detected).
             Expects a list of ASS dialogue lines (strings).
             Returns a list of grouped dicts: {"name": ..., "lines": [...], "start": ..., "end": ...}
             If any name is missing, returns None (no grouping).
+            
+            Args:
+                dialogue_lines: List of dialogue lines from .ass file
+                enable_grouping: Whether to enable speaker-based grouping (default: False)
+            
+            NOTE: Grouping is disabled by default as it can cause issues with splitting
+            translated text back into individual dialogue lines. Enable only for files
+            with rich speaker names (e.g., anime with character names in each line).
             """
+            # If grouping is disabled, return None to use line-by-line translation
+            if not enable_grouping:
+                return None
+            
+            # Grouping enabled - group by speaker
             grouped = []
             current = None
             for line in dialogue_lines:
@@ -255,6 +332,7 @@ class SubtitleTranslator:
         """
         Translate a list of subtitle lines (.ass or plain text).
         Preserves metadata and formatting tags, cleans spacing, and skips empty lines.
+        Implements adaptive batch sizing with OOM handling.
         """
 
         src_code = self.LANG_CODES.get(src_lang, src_lang)
@@ -262,15 +340,16 @@ class SubtitleTranslator:
         self.tokenizer.src_lang = src_code
         tgt_id = self.tokenizer.convert_tokens_to_ids(tgt_code)
 
-        batch_size = batch_size or self.batch_size
+        current_batch_size = batch_size or self.batch_size
         num_beams = num_beams or self.num_beams
         results = []
         total = len(texts)
 
         dialogue_pattern = re.compile(r'^(Dialogue:\s*\d+,\d+:\d+:\d+\.\d+,\d+:\d+:\d+\.\d+,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,)(.*)$')
 
-        for i in range(0, total, batch_size):
-            batch = texts[i:i + batch_size]
+        i = 0
+        while i < total:
+            batch = texts[i:i + current_batch_size]
             translatable_texts, metadata_prefixes, empty_flags = [], [], []
 
             for line in batch:
@@ -295,45 +374,65 @@ class SubtitleTranslator:
             non_empty_inputs = [t for t, e in zip(translatable_texts, empty_flags) if not e]
             if not non_empty_inputs:
                 results.extend(["" for _ in batch])
+                i += current_batch_size
+                if progress_callback:
+                    progress_callback(min(i, total), total)
                 continue
 
-            encoded = self.tokenizer(
-                non_empty_inputs,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=512
-            ).to(self.device)
+            try:
+                encoded = self.tokenizer(
+                    non_empty_inputs,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=512
+                ).to(self.device)
 
-            with torch.no_grad():
-                generated = self.model.generate(
-                    **encoded,
-                    forced_bos_token_id=tgt_id,
-                    max_length=512,
-                    num_beams=num_beams,
-                    early_stopping=True
-                )
+                with torch.no_grad():
+                    generated = self.model.generate(
+                        **encoded,
+                        forced_bos_token_id=tgt_id,
+                        max_new_tokens=256,  # Use max_new_tokens instead of max_length
+                        num_beams=num_beams,
+                        early_stopping=True
+                    )
 
-            translated_batch = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
+                translated_batch = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
 
-            # Reinsert translated results
-            idx = 0
-            for prefix, was_empty in zip(metadata_prefixes, empty_flags):
-                if was_empty:
-                    results.append("")
-                    continue
-                translated_text = translated_batch[idx]
-                idx += 1
+                # Reinsert translated results
+                idx = 0
+                for prefix, was_empty in zip(metadata_prefixes, empty_flags):
+                    if was_empty:
+                        results.append("")
+                        continue
+                    translated_text = translated_batch[idx]
+                    idx += 1
 
-                # Clean up spaces around tags and \N
-                translated_text = re.sub(r'\s*\\N\s*', r'\\N', translated_text)
-                translated_text = re.sub(r'\s*({\\[^}]+})\s*', r'\1', translated_text)
+                    # Clean up spaces around tags and \N
+                    translated_text = re.sub(r'\s*\\N\s*', r'\\N', translated_text)
+                    translated_text = re.sub(r'\s*({\\[^}]+})\s*', r'\1', translated_text)
 
-                final_line = prefix + translated_text if prefix else translated_text
-                results.append(final_line)
+                    final_line = prefix + translated_text if prefix else translated_text
+                    results.append(final_line)
 
-            if progress_callback:
-                progress_callback(min(i + batch_size, total), total)
+                # Success - move to next batch
+                i += current_batch_size
+                if progress_callback:
+                    progress_callback(min(i, total), total)
+
+            except (RuntimeError, torch.cuda.OutOfMemoryError) as e:
+                if "out of memory" in str(e).lower() and current_batch_size > 1:
+                    # OOM occurred - reduce batch size and retry
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    current_batch_size = max(1, current_batch_size // 2)
+                    print(f"\n⚠️  Reduced batch size to {current_batch_size} due to OOM.")
+                    # Don't increment i - retry this batch with smaller size
+                    # Clear results that were partially added
+                    results = results[:i]
+                else:
+                    # Non-OOM error or batch size is already 1
+                    raise
 
         return results
     
@@ -348,8 +447,19 @@ class SubtitleTranslator:
         return path
 
     def translate_ass_file(self, input_path: str, src_lang: str, tgt_lang: str,
-                           n_tag_idx: int = 0, progress_callback=None, preparing_callback=None) -> Tuple[str, List[str], List[str]]:
-        """Translate .ass file, grouping by speaker if possible."""
+                           n_tag_idx: int = 0, enable_grouping: bool = False, 
+                           progress_callback=None, preparing_callback=None) -> Tuple[str, List[str], List[str]]:
+        """Translate .ass file, optionally grouping by speaker.
+        
+        Args:
+            input_path: Path to input .ass file
+            src_lang: Source language code
+            tgt_lang: Target language code
+            n_tag_idx: Word index for \\N tag insertion
+            enable_grouping: Enable speaker-based grouping (default: False)
+            progress_callback: Callback for progress updates
+            preparing_callback: Callback for preparation status
+        """
         import time
         start_time = time.time()
         if preparing_callback:
@@ -376,8 +486,8 @@ class SubtitleTranslator:
         if preparing_callback:
             preparing_callback("Preparing translation batches... (Preparation time depends on the amount of lines in the file)")
 
-        # Try grouping by speaker
-        grouped = self.group_dialogues_by_speaker(dialogues)
+        # Try grouping by speaker (if enabled)
+        grouped = self.group_dialogues_by_speaker(dialogues, enable_grouping=enable_grouping)
 
         # Prepare output/log base paths
         def get_unique_path(base_path, ext):
@@ -397,6 +507,8 @@ class SubtitleTranslator:
             "Batch size": self.batch_size,
             "Num beams": self.num_beams,
             "Device": self.device,
+            "FP16 mode": self.use_fp16,
+            "Quantization": f"{self.quantization_bits}-bit" if self.use_quantization else "None",
             "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
         }
 
@@ -575,6 +687,8 @@ class SubtitleTranslator:
             "Batch size": self.batch_size,
             "Num beams": self.num_beams,
             "Device": self.device,
+            "FP16 mode": self.use_fp16,
+            "Quantization": f"{self.quantization_bits}-bit" if self.use_quantization else "None",
             "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
         }
 
@@ -641,6 +755,8 @@ class SubtitleTranslator:
             "Batch size": self.batch_size,
             "Num beams": self.num_beams,
             "Device": self.device,
+            "FP16 mode": self.use_fp16,
+            "Quantization": f"{self.quantization_bits}-bit" if self.use_quantization else "None",
             "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
         }
 
@@ -676,7 +792,7 @@ def run_gui():
     
     root = tk.Tk()
     root.title("Subtitle Translator (NLLB)")
-    root.geometry("580x280")
+    root.geometry("580x440")
     
     # Variables
     file_path = tk.StringVar()
@@ -684,8 +800,12 @@ def run_gui():
     tgt_lang = tk.StringVar(value="pl")
     file_type = tk.StringVar(value="ass")
     n_tag_wordidx = tk.IntVar(value=0)
-    batch_size_var = tk.IntVar(value=8)
+    batch_size_var = tk.IntVar(value=32)  # Increased default from 8 to 32
     num_beams_var = tk.IntVar(value=2)
+    use_fp16_var = tk.BooleanVar(value=True)
+    use_quantization_var = tk.BooleanVar(value=False)
+    quantization_bits_var = tk.StringVar(value="4")
+    enable_grouping_var = tk.BooleanVar(value=False)  # Disabled by default for safety
     
     LANG_OPTIONS = ["en", "pl", "ja", "fr", "de"]
     FILE_TYPES = ["ass", "srt", "txt"]
@@ -753,16 +873,28 @@ def run_gui():
     
     tk.Label(adv_frame, text="Beams:").grid(row=0, column=4, sticky="w", padx=(10,2))
     tk.Spinbox(adv_frame, from_=1, to=10, textvariable=num_beams_var, width=6).grid(row=0, column=5, sticky="w", padx=2)
+    
+    # Speaker grouping option (for .ass files with rich speaker names)
+    tk.Checkbutton(adv_frame, text="Group by speaker (.ass only)", variable=enable_grouping_var).grid(row=1, column=0, columnspan=3, sticky="w", padx=2, pady=(5,0))
+
+    # Optimization Options Group
+    opt_frame = tk.LabelFrame(root, text="Performance Optimizations", padx=5, pady=5)
+    opt_frame.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+    
+    tk.Checkbutton(opt_frame, text="FP16 (half precision)", variable=use_fp16_var).grid(row=0, column=0, sticky="w", padx=2)
+    tk.Checkbutton(opt_frame, text="Quantization", variable=use_quantization_var).grid(row=0, column=1, sticky="w", padx=2)
+    tk.Label(opt_frame, text="Bits:").grid(row=0, column=2, sticky="w", padx=(10,2))
+    tk.OptionMenu(opt_frame, quantization_bits_var, "4", "8").grid(row=0, column=3, sticky="w", padx=2)
 
     # Progress
     progress_label = tk.Label(root, text="Translation: 0%", font=("Arial", 9))
-    progress_label.grid(row=3, column=0, columnspan=3, pady=2)
+    progress_label.grid(row=4, column=0, columnspan=3, pady=2)
 
     status_label = tk.Label(root, text="Ready", font=("Arial", 9, "bold"))
-    status_label.grid(row=4, column=0, columnspan=3, pady=2)
+    status_label.grid(row=5, column=0, columnspan=3, pady=2)
 
     start_btn = tk.Button(root, text="Start Translation", width=20, bg="#4CAF50", fg="white")
-    start_btn.grid(row=5, column=0, columnspan=3, pady=10)
+    start_btn.grid(row=6, column=0, columnspan=3, pady=10)
     
 
     def update_progress(current, total):
@@ -793,7 +925,7 @@ def run_gui():
                     with open(input_path, 'r', encoding='utf-8-sig') as f:
                         lines = f.readlines()
                     dialogues = [line for line in lines if line.startswith('Dialogue:')]
-                    grouped = SubtitleTranslator().group_dialogues_by_speaker(dialogues)
+                    grouped = SubtitleTranslator.group_dialogues_by_speaker(dialogues, enable_grouping=True)
                     if grouped and len(grouped) == len(originals):
                         speaker_names = [g['name'] for g in grouped]
         except Exception:
@@ -854,18 +986,114 @@ def run_gui():
             scrollable_frame.grid_columnconfigure(c, weight=1)
 
         def save_and_close():
+            """Save edited translations and finalize the output file."""
             edited = [e.get() for e in entry_widgets]
-            # Save edited translations
-            # (File already saved, this would be for re-saving edits)
-            review_win.destroy()
-            messagebox.showinfo("Success", f"Translation completed!\nSaved to: {output_path}")
-            reset_ui()
+            
+            # Apply edits to the output file
+            try:
+                # Re-write the output file with edited translations
+                # Read the current file to preserve structure
+                with open(output_path, 'r', encoding='utf-8-sig') as f:
+                    lines = f.readlines()
+                
+                # For .ass files, update dialogue lines
+                if output_path.endswith('.ass'):
+                    dialogue_idx = 0
+                    for i, line in enumerate(lines):
+                        if line.startswith('Dialogue:'):
+                            if dialogue_idx < len(edited):
+                                parts = line.split(',', 9)
+                                if len(parts) >= 10:
+                                    parts[9] = edited[dialogue_idx] + '\n'
+                                    lines[i] = ','.join(parts)
+                                dialogue_idx += 1
+                
+                # For .srt files, update subtitle text
+                elif output_path.endswith('.srt'):
+                    trans_idx = 0
+                    i = 0
+                    while i < len(lines):
+                        # Skip index and timestamp lines
+                        if lines[i].strip().isdigit():
+                            i += 2  # Skip index and timestamp
+                            # Now we're at the text - update it
+                            if i < len(lines) and trans_idx < len(edited):
+                                # Replace all text lines until empty line
+                                text_start = i
+                                while i < len(lines) and lines[i].strip():
+                                    i += 1
+                                # Replace the text block with edited version
+                                lines[text_start] = edited[trans_idx] + '\n'
+                                # Remove extra lines
+                                for j in range(text_start + 1, i):
+                                    lines[j] = ''
+                                trans_idx += 1
+                        i += 1
+                
+                # For .txt files, just replace the lines
+                elif output_path.endswith('.txt'):
+                    with open(output_path, 'w', encoding='utf-8') as f:
+                        for line in edited:
+                            f.write(line + '\n')
+                
+                # Write back the file if not .txt
+                if not output_path.endswith('.txt'):
+                    with open(output_path, 'w', encoding='utf-8-sig') as f:
+                        f.writelines(lines)
+                
+                # Update the log file with corrected translations
+                log_path = output_path.rsplit('.', 1)[0] + '_log.txt'
+                if os.path.exists(log_path):
+                    try:
+                        # Read the existing log file
+                        with open(log_path, 'r', encoding='utf-8') as f:
+                            log_lines = f.readlines()
+                        
+                        # Update translations in the log
+                        # Format: [Line N]\nOriginal: ...\nTranslation: ...\n
+                        trans_idx = 0
+                        for i, line in enumerate(log_lines):
+                            if line.startswith('Translation:') and trans_idx < len(edited):
+                                # Replace the translation line with edited version
+                                log_lines[i] = f"Translation: {edited[trans_idx]}\n"
+                                trans_idx += 1
+                        
+                        # Write back the updated log
+                        with open(log_path, 'w', encoding='utf-8') as f:
+                            f.writelines(log_lines)
+                    except Exception as log_err:
+                        print(f"Warning: Could not update log file: {log_err}")
+                
+                review_win.destroy()
+                messagebox.showinfo("Success", f"Translation saved!\n\nOutput: {output_path}\nLog file updated with corrections.")
+                reset_ui()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save edits:\n{str(e)}")
+        
+        def cancel_translation():
+            """Cancel the translation and delete the output file."""
+            try:
+                # Delete the output file
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                # Delete the log file if it exists
+                log_path = output_path.rsplit('.', 1)[0] + '_log.txt'
+                if os.path.exists(log_path):
+                    os.remove(log_path)
+                
+                review_win.destroy()
+                messagebox.showinfo("Cancelled", "Translation cancelled. Output files deleted.")
+                reset_ui()
+            except Exception as e:
+                review_win.destroy()
+                messagebox.showerror("Error", f"Failed to clean up files:\n{str(e)}")
+                reset_ui()
 
         # Bottom button frame
         btn_frame = tk.Frame(review_win)
         btn_frame.pack(side=tk.BOTTOM, pady=10)
         tk.Button(btn_frame, text="Approve and Save", command=save_and_close, width=20, bg="#4CAF50", fg="white").pack(side=tk.LEFT, padx=5)
-        tk.Button(btn_frame, text="Cancel", command=review_win.destroy, width=15).pack(side=tk.LEFT, padx=5)
+        tk.Button(btn_frame, text="Cancel", command=cancel_translation, width=15, bg="#f44336", fg="white").pack(side=tk.LEFT, padx=5)
     
     def reset_ui():
         """Reset UI to initial state."""
@@ -899,7 +1127,10 @@ def run_gui():
                     translator = SubtitleTranslator(
                         batch_size=batch_size_var.get(),
                         num_beams=num_beams_var.get(),
-                        lora_adapter=lora_path
+                        lora_adapter=lora_path,
+                        use_fp16=use_fp16_var.get(),
+                        use_quantization=use_quantization_var.get(),
+                        quantization_bits=int(quantization_bits_var.get())
                     )
 
                 status_label.config(text="Translating...")
@@ -910,7 +1141,8 @@ def run_gui():
                 if ftype == "ass":
                     output_path, originals, translations = translator.translate_ass_file(
                         path, src_lang.get(), tgt_lang.get(),
-                        n_tag_wordidx.get(), update_progress, update_preparing
+                        n_tag_wordidx.get(), enable_grouping_var.get(),
+                        update_progress, update_preparing
                     )
                 elif ftype == "srt":
                     output_path, originals, translations = translator.translate_srt_file(
@@ -954,9 +1186,14 @@ def run_cli():
     parser.add_argument("--src", default="en", help="Source language (default: en)")
     parser.add_argument("--tgt", default="pl", help="Target language (default: pl)")
     parser.add_argument("--nwordix", type=int, default=0, help="Word index for \\N tag insertion (0=auto, .ass only)")
-    parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
+    parser.add_argument("--enable-grouping", action="store_true", help="Enable speaker-based grouping for .ass files with rich speaker names (default: disabled)")
+    parser.add_argument("--batch-size", type=int, default=32, help="Initial batch size, adaptive on OOM (default: 32)")
     parser.add_argument("--num-beams", type=int, default=2, help="Beam search width (default: 2)")
     parser.add_argument("--lora-adapter", default=None, help="Path to LoRA adapter directory (optional)")
+    parser.add_argument("--fp16", action="store_true", default=True, help="Use FP16 half precision (default: enabled)")
+    parser.add_argument("--no-fp16", action="store_false", dest="fp16", help="Disable FP16 half precision")
+    parser.add_argument("--quantize", action="store_true", help="Enable quantization (4-bit or 8-bit)")
+    parser.add_argument("--quantize-bits", type=int, choices=[4, 8], default=4, help="Quantization bits: 4 or 8 (default: 4)")
     
     args = parser.parse_args()
     
@@ -972,9 +1209,17 @@ def run_cli():
     
     print(f"\nTranslating: {args.input_file}")
     print(f"Languages: {args.src} -> {args.tgt}")
+    print(f"Optimizations: FP16={args.fp16}, Quantization={args.quantize}, Batch={args.batch_size}")
     
     # Load translator
-    translator = SubtitleTranslator(batch_size=args.batch_size, num_beams=args.num_beams, lora_adapter=args.lora_adapter)
+    translator = SubtitleTranslator(
+        batch_size=args.batch_size, 
+        num_beams=args.num_beams, 
+        lora_adapter=args.lora_adapter,
+        use_fp16=args.fp16,
+        use_quantization=args.quantize,
+        quantization_bits=args.quantize_bits
+    )
     
     def progress_callback(current, total):
         pct = int((current / total) * 100)
@@ -988,7 +1233,8 @@ def run_cli():
         if ext == 'ass':
             output_path, _, _ = translator.translate_ass_file(
                 args.input_file, args.src, args.tgt,
-                args.nwordix, progress_callback, preparing_callback
+                args.nwordix, args.enable_grouping,
+                progress_callback, preparing_callback
             )
         elif ext == 'srt':
             output_path, _, _ = translator.translate_srt_file(

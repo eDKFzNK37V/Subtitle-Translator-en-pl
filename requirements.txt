@@ -7,6 +7,7 @@ tqdm>=4.65.0
 sentencepiece>=0.1.99
 peft>=0.4.0
 accelerate>=0.28.0
+bitsandbytes>=0.41.0
 ############################################################
 # PyTorch 2.6+ is required due to security (CVE-2025-32434)
 # For CUDA 12.4 (NVIDIA GPU) support:
