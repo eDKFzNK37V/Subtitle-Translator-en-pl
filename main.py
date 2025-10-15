@@ -138,28 +138,36 @@ class SubtitleTranslator:
             Expects a list of ASS dialogue lines (strings).
             Returns a list of grouped dicts: {"name": ..., "lines": [...], "start": ..., "end": ...}
             If any name is missing, returns None (no grouping).
+            
+            NOTE: Grouping is currently disabled as it causes issues with splitting
+            translated text back into individual dialogue lines. Line-by-line 
+            translation is more reliable.
             """
-            grouped = []
-            current = None
-            for line in dialogue_lines:
-                parts = line.split(",", 9)
-                name = parts[4].strip() if len(parts) > 4 else ""
-                text = parts[9] if len(parts) > 9 else ""
-                start = parts[1] if len(parts) > 1 else ""
-                end = parts[2] if len(parts) > 2 else ""
-                if not name:
-                    # If any name is missing, skip grouping entirely
-                    return None
-                if current and current["name"] == name:
-                    current["lines"].append(text)
-                    current["end"] = end
-                else:
-                    if current:
-                        grouped.append(current)
-                    current = {"name": name, "lines": [text], "start": start, "end": end}
-            if current:
-                grouped.append(current)
-            return grouped
+            # Grouping disabled - always return None to use line-by-line translation
+            return None
+            
+            # Original grouping code kept for reference but not used:
+            # grouped = []
+            # current = None
+            # for line in dialogue_lines:
+            #     parts = line.split(",", 9)
+            #     name = parts[4].strip() if len(parts) > 4 else ""
+            #     text = parts[9] if len(parts) > 9 else ""
+            #     start = parts[1] if len(parts) > 1 else ""
+            #     end = parts[2] if len(parts) > 2 else ""
+            #     if not name:
+            #         # If any name is missing, skip grouping entirely
+            #         return None
+            #     if current and current["name"] == name:
+            #         current["lines"].append(text)
+            #         current["end"] = end
+            #     else:
+            #         if current:
+            #             grouped.append(current)
+            #         current = {"name": name, "lines": [text], "start": start, "end": end}
+            # if current:
+            #     grouped.append(current)
+            # return grouped
     
     def protect_tags(self, text: str) -> Tuple[str, list]:
         import time
