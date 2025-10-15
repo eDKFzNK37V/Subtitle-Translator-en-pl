@@ -1257,9 +1257,8 @@ def run_cli():
 # ============================================================================
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and not sys.argv[1].startswith('-'):
-        # CLI mode if file argument provided
+    # Run CLI if any argument is present (file or CLI-style), otherwise run GUI
+    if len(sys.argv) > 1:
         run_cli()
     else:
-        # GUI mode
         run_gui()
