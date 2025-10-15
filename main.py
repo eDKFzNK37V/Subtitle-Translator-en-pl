@@ -19,13 +19,18 @@ from typing import List, Tuple, Optional
 
 try:
     import torch
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM, BitsAndBytesConfig
     from tqdm import tqdm
     try:
         from peft import PeftModel
         PEFT_AVAILABLE = True
     except ImportError:
         PEFT_AVAILABLE = False
+    try:
+        import bitsandbytes
+        BITSANDBYTES_AVAILABLE = True
+    except ImportError:
+        BITSANDBYTES_AVAILABLE = False
 except ImportError as e:
     print(f"Error: Missing dependencies - {e}")
     print("Please install: pip install torch transformers tqdm peft")
@@ -51,23 +56,81 @@ class SubtitleTranslator:
     TAG_ONLY = re.compile(r"({\\.*?})")
     TAG_OR_ESCAPE = re.compile(r"({\\.*?})|(\\\[NnHhRr])")
     
-    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 8, num_beams: int = 2, lora_adapter: Optional[str] = None):
-        """Initialize translator with NLLB model and optional LoRA adapter."""
+    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 32, num_beams: int = 2, 
+                 lora_adapter: Optional[str] = None, use_fp16: bool = True, use_quantization: bool = False,
+                 quantization_bits: int = 4):
+        """Initialize translator with NLLB model and optional LoRA adapter.
+        
+        Args:
+            model_name: HuggingFace model name
+            batch_size: Initial batch size (will be reduced on OOM)
+            num_beams: Number of beams for beam search
+            lora_adapter: Path to LoRA adapter directory
+            use_fp16: Use FP16 (half precision) for faster inference
+            use_quantization: Use quantization (4-bit or 8-bit)
+            quantization_bits: Bits for quantization (4 or 8)
+        """
         print(f"Loading model: {model_name}")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         print(f"Using device: {self.device}")
+        
+        # Store optimization settings
+        self.use_fp16 = use_fp16 and self.device == "cuda"
+        self.use_quantization = use_quantization and self.device == "cuda"
+        self.quantization_bits = quantization_bits
+        self.initial_batch_size = batch_size
+        
+        # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+        
+        # Configure quantization if requested
+        quantization_config = None
+        if self.use_quantization:
+            if not BITSANDBYTES_AVAILABLE:
+                print("⚠️  Warning: bitsandbytes not available. Disabling quantization.")
+                print("   Install with: pip install bitsandbytes")
+                self.use_quantization = False
+            else:
+                print(f"Using {quantization_bits}-bit quantization")
+                quantization_config = BitsAndBytesConfig(
+                    load_in_4bit=(quantization_bits == 4),
+                    load_in_8bit=(quantization_bits == 8),
+                    bnb_4bit_compute_dtype=torch.float16 if quantization_bits == 4 else None,
+                )
+        
+        # Load model with quantization if enabled
+        self.model = AutoModelForSeq2SeqLM.from_pretrained(
+            model_name,
+            quantization_config=quantization_config,
+            device_map="auto" if self.use_quantization else None
+        )
+        
+        # Apply LoRA adapter if provided
         if lora_adapter:
             if not PEFT_AVAILABLE:
                 raise ImportError("peft is required for LoRA adapter support. Please install with: pip install peft")
             print(f"Loading LoRA adapter from: {lora_adapter}")
             self.model = PeftModel.from_pretrained(self.model, lora_adapter) # type: ignore
-        self.model.to(self.device)
+        
+        # Move to device and optimize
+        if not self.use_quantization:
+            self.model.to(self.device)
+            # Apply FP16 if requested and not using quantization
+            if self.use_fp16:
+                print("Using FP16 (half precision)")
+                self.model = self.model.half()
+        
         self.model.eval()
+        
+        # Enable TF32 for faster matmul on Ampere+ GPUs
+        if self.device == "cuda" and torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+            print("TF32 optimization enabled")
+        
         self.batch_size = batch_size
         self.num_beams = num_beams
-        print("Model loaded!")
+        print(f"Model loaded! (FP16: {self.use_fp16}, Quantized: {self.use_quantization})")
 
     def group_dialogues_by_speaker(self, dialogue_lines):
             """
@@ -255,6 +318,7 @@ class SubtitleTranslator:
         """
         Translate a list of subtitle lines (.ass or plain text).
         Preserves metadata and formatting tags, cleans spacing, and skips empty lines.
+        Implements adaptive batch sizing with OOM handling.
         """
 
         src_code = self.LANG_CODES.get(src_lang, src_lang)
@@ -262,15 +326,16 @@ class SubtitleTranslator:
         self.tokenizer.src_lang = src_code
         tgt_id = self.tokenizer.convert_tokens_to_ids(tgt_code)
 
-        batch_size = batch_size or self.batch_size
+        current_batch_size = batch_size or self.batch_size
         num_beams = num_beams or self.num_beams
         results = []
         total = len(texts)
 
         dialogue_pattern = re.compile(r'^(Dialogue:\s*\d+,\d+:\d+:\d+\.\d+,\d+:\d+:\d+\.\d+,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,)(.*)$')
 
-        for i in range(0, total, batch_size):
-            batch = texts[i:i + batch_size]
+        i = 0
+        while i < total:
+            batch = texts[i:i + current_batch_size]
             translatable_texts, metadata_prefixes, empty_flags = [], [], []
 
             for line in batch:
@@ -295,45 +360,65 @@ class SubtitleTranslator:
             non_empty_inputs = [t for t, e in zip(translatable_texts, empty_flags) if not e]
             if not non_empty_inputs:
                 results.extend(["" for _ in batch])
+                i += current_batch_size
+                if progress_callback:
+                    progress_callback(min(i, total), total)
                 continue
 
-            encoded = self.tokenizer(
-                non_empty_inputs,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=512
-            ).to(self.device)
+            try:
+                encoded = self.tokenizer(
+                    non_empty_inputs,
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=512
+                ).to(self.device)
 
-            with torch.no_grad():
-                generated = self.model.generate(
-                    **encoded,
-                    forced_bos_token_id=tgt_id,
-                    max_length=512,
-                    num_beams=num_beams,
-                    early_stopping=True
-                )
+                with torch.no_grad():
+                    generated = self.model.generate(
+                        **encoded,
+                        forced_bos_token_id=tgt_id,
+                        max_new_tokens=256,  # Use max_new_tokens instead of max_length
+                        num_beams=num_beams,
+                        early_stopping=True
+                    )
 
-            translated_batch = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
+                translated_batch = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
 
-            # Reinsert translated results
-            idx = 0
-            for prefix, was_empty in zip(metadata_prefixes, empty_flags):
-                if was_empty:
-                    results.append("")
-                    continue
-                translated_text = translated_batch[idx]
-                idx += 1
+                # Reinsert translated results
+                idx = 0
+                for prefix, was_empty in zip(metadata_prefixes, empty_flags):
+                    if was_empty:
+                        results.append("")
+                        continue
+                    translated_text = translated_batch[idx]
+                    idx += 1
 
-                # Clean up spaces around tags and \N
-                translated_text = re.sub(r'\s*\\N\s*', r'\\N', translated_text)
-                translated_text = re.sub(r'\s*({\\[^}]+})\s*', r'\1', translated_text)
+                    # Clean up spaces around tags and \N
+                    translated_text = re.sub(r'\s*\\N\s*', r'\\N', translated_text)
+                    translated_text = re.sub(r'\s*({\\[^}]+})\s*', r'\1', translated_text)
 
-                final_line = prefix + translated_text if prefix else translated_text
-                results.append(final_line)
+                    final_line = prefix + translated_text if prefix else translated_text
+                    results.append(final_line)
 
-            if progress_callback:
-                progress_callback(min(i + batch_size, total), total)
+                # Success - move to next batch
+                i += current_batch_size
+                if progress_callback:
+                    progress_callback(min(i, total), total)
+
+            except (RuntimeError, torch.cuda.OutOfMemoryError) as e:
+                if "out of memory" in str(e).lower() and current_batch_size > 1:
+                    # OOM occurred - reduce batch size and retry
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    current_batch_size = max(1, current_batch_size // 2)
+                    print(f"\n⚠️  Reduced batch size to {current_batch_size} due to OOM.")
+                    # Don't increment i - retry this batch with smaller size
+                    # Clear results that were partially added
+                    results = results[:i]
+                else:
+                    # Non-OOM error or batch size is already 1
+                    raise
 
         return results
     
@@ -397,6 +482,8 @@ class SubtitleTranslator:
             "Batch size": self.batch_size,
             "Num beams": self.num_beams,
             "Device": self.device,
+            "FP16 mode": self.use_fp16,
+            "Quantization": f"{self.quantization_bits}-bit" if self.use_quantization else "None",
             "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
         }
 
@@ -575,6 +662,8 @@ class SubtitleTranslator:
             "Batch size": self.batch_size,
             "Num beams": self.num_beams,
             "Device": self.device,
+            "FP16 mode": self.use_fp16,
+            "Quantization": f"{self.quantization_bits}-bit" if self.use_quantization else "None",
             "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
         }
 
@@ -641,6 +730,8 @@ class SubtitleTranslator:
             "Batch size": self.batch_size,
             "Num beams": self.num_beams,
             "Device": self.device,
+            "FP16 mode": self.use_fp16,
+            "Quantization": f"{self.quantization_bits}-bit" if self.use_quantization else "None",
             "LoRA adapter": getattr(self.model, 'peft_config', None) or getattr(self.model, 'active_adapter', None) or "None"
         }
 
@@ -676,7 +767,7 @@ def run_gui():
     
     root = tk.Tk()
     root.title("Subtitle Translator (NLLB)")
-    root.geometry("580x280")
+    root.geometry("580x340")
     
     # Variables
     file_path = tk.StringVar()
@@ -684,8 +775,11 @@ def run_gui():
     tgt_lang = tk.StringVar(value="pl")
     file_type = tk.StringVar(value="ass")
     n_tag_wordidx = tk.IntVar(value=0)
-    batch_size_var = tk.IntVar(value=8)
+    batch_size_var = tk.IntVar(value=32)  # Increased default from 8 to 32
     num_beams_var = tk.IntVar(value=2)
+    use_fp16_var = tk.BooleanVar(value=True)
+    use_quantization_var = tk.BooleanVar(value=False)
+    quantization_bits_var = tk.IntVar(value=4)
     
     LANG_OPTIONS = ["en", "pl", "ja", "fr", "de"]
     FILE_TYPES = ["ass", "srt", "txt"]
@@ -754,15 +848,24 @@ def run_gui():
     tk.Label(adv_frame, text="Beams:").grid(row=0, column=4, sticky="w", padx=(10,2))
     tk.Spinbox(adv_frame, from_=1, to=10, textvariable=num_beams_var, width=6).grid(row=0, column=5, sticky="w", padx=2)
 
+    # Optimization Options Group
+    opt_frame = tk.LabelFrame(root, text="Performance Optimizations", padx=5, pady=5)
+    opt_frame.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky="ew")
+    
+    tk.Checkbutton(opt_frame, text="FP16 (half precision)", variable=use_fp16_var).grid(row=0, column=0, sticky="w", padx=2)
+    tk.Checkbutton(opt_frame, text="Quantization", variable=use_quantization_var).grid(row=0, column=1, sticky="w", padx=2)
+    tk.Label(opt_frame, text="Bits:").grid(row=0, column=2, sticky="w", padx=(10,2))
+    tk.OptionMenu(opt_frame, quantization_bits_var, 4, 8).grid(row=0, column=3, sticky="w", padx=2)
+
     # Progress
     progress_label = tk.Label(root, text="Translation: 0%", font=("Arial", 9))
-    progress_label.grid(row=3, column=0, columnspan=3, pady=2)
+    progress_label.grid(row=4, column=0, columnspan=3, pady=2)
 
     status_label = tk.Label(root, text="Ready", font=("Arial", 9, "bold"))
-    status_label.grid(row=4, column=0, columnspan=3, pady=2)
+    status_label.grid(row=5, column=0, columnspan=3, pady=2)
 
     start_btn = tk.Button(root, text="Start Translation", width=20, bg="#4CAF50", fg="white")
-    start_btn.grid(row=5, column=0, columnspan=3, pady=10)
+    start_btn.grid(row=6, column=0, columnspan=3, pady=10)
     
 
     def update_progress(current, total):
@@ -899,7 +1002,10 @@ def run_gui():
                     translator = SubtitleTranslator(
                         batch_size=batch_size_var.get(),
                         num_beams=num_beams_var.get(),
-                        lora_adapter=lora_path
+                        lora_adapter=lora_path,
+                        use_fp16=use_fp16_var.get(),
+                        use_quantization=use_quantization_var.get(),
+                        quantization_bits=quantization_bits_var.get()
                     )
 
                 status_label.config(text="Translating...")
@@ -954,9 +1060,13 @@ def run_cli():
     parser.add_argument("--src", default="en", help="Source language (default: en)")
     parser.add_argument("--tgt", default="pl", help="Target language (default: pl)")
     parser.add_argument("--nwordix", type=int, default=0, help="Word index for \\N tag insertion (0=auto, .ass only)")
-    parser.add_argument("--batch-size", type=int, default=8, help="Batch size (default: 8)")
+    parser.add_argument("--batch-size", type=int, default=32, help="Initial batch size, adaptive on OOM (default: 32)")
     parser.add_argument("--num-beams", type=int, default=2, help="Beam search width (default: 2)")
     parser.add_argument("--lora-adapter", default=None, help="Path to LoRA adapter directory (optional)")
+    parser.add_argument("--fp16", action="store_true", default=True, help="Use FP16 half precision (default: enabled)")
+    parser.add_argument("--no-fp16", action="store_false", dest="fp16", help="Disable FP16 half precision")
+    parser.add_argument("--quantize", action="store_true", help="Enable quantization (4-bit or 8-bit)")
+    parser.add_argument("--quantize-bits", type=int, choices=[4, 8], default=4, help="Quantization bits: 4 or 8 (default: 4)")
     
     args = parser.parse_args()
     
@@ -972,9 +1082,17 @@ def run_cli():
     
     print(f"\nTranslating: {args.input_file}")
     print(f"Languages: {args.src} -> {args.tgt}")
+    print(f"Optimizations: FP16={args.fp16}, Quantization={args.quantize}, Batch={args.batch_size}")
     
     # Load translator
-    translator = SubtitleTranslator(batch_size=args.batch_size, num_beams=args.num_beams, lora_adapter=args.lora_adapter)
+    translator = SubtitleTranslator(
+        batch_size=args.batch_size, 
+        num_beams=args.num_beams, 
+        lora_adapter=args.lora_adapter,
+        use_fp16=args.fp16,
+        use_quantization=args.quantize,
+        quantization_bits=args.quantize_bits
+    )
     
     def progress_callback(current, total):
         pct = int((current / total) * 100)
