@@ -99,6 +99,8 @@ class SubtitleTranslator:
             return grouped
     
     def protect_tags(self, text: str) -> Tuple[str, list]:
+        import time
+        start = time.perf_counter()
         """
         Replace all tags/escapes with unique placeholders and return:
           clean_text, ph_map
@@ -116,6 +118,9 @@ class SubtitleTranslator:
 
         # Use re.sub to directly replace tags/escapes with placeholders, preserving all other text
         clean_text = self.TAG_OR_ESCAPE.sub(repl, text)
+        elapsed = (time.perf_counter() - start) * 1000  # ms
+        if elapsed > 10:
+            print(f"[PROFILE] protect_tags: {elapsed:.2f} ms for {len(text)} chars")
         return clean_text, ph_map
     
     def restore_tags(self, translated: str, ph_map: list) -> str:
@@ -245,37 +250,91 @@ class SubtitleTranslator:
         print(f"Translation log saved to: {log_path}")
     
     def translate(self, texts: List[str], src_lang: str, tgt_lang: str,
-                  batch_size: Optional[int] = None, num_beams: Optional[int] = None, progress_callback=None) -> List[str]:
-        """Translate a list of texts."""
+              batch_size: Optional[int] = None, num_beams: Optional[int] = None,
+              progress_callback=None) -> List[str]:
+        """
+        Translate a list of subtitle lines (.ass or plain text).
+        Preserves metadata and formatting tags, cleans spacing, and skips empty lines.
+        """
+
         src_code = self.LANG_CODES.get(src_lang, src_lang)
         tgt_code = self.LANG_CODES.get(tgt_lang, tgt_lang)
         self.tokenizer.src_lang = src_code
         tgt_id = self.tokenizer.convert_tokens_to_ids(tgt_code)
+
+        batch_size = batch_size or self.batch_size
+        num_beams = num_beams or self.num_beams
         results = []
         total = len(texts)
-        batch_size = batch_size if batch_size is not None else self.batch_size
-        num_beams = num_beams if num_beams is not None else self.num_beams
+
+        dialogue_pattern = re.compile(r'^(Dialogue:\s*\d+,\d+:\d+:\d+\.\d+,\d+:\d+:\d+\.\d+,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,[^,]*,)(.*)$')
+
         for i in range(0, total, batch_size):
             batch = texts[i:i + batch_size]
+            translatable_texts, metadata_prefixes, empty_flags = [], [], []
+
+            for line in batch:
+                if not line.strip():
+                    metadata_prefixes.append("")
+                    translatable_texts.append("")
+                    empty_flags.append(True)
+                    continue
+
+                match = dialogue_pattern.match(line)
+                if match:
+                    prefix, dialogue_text = match.groups()
+                    metadata_prefixes.append(prefix)
+                    translatable_texts.append(dialogue_text.strip())
+                else:
+                    metadata_prefixes.append("")
+                    translatable_texts.append(line.strip())
+
+                empty_flags.append(False)
+
+            # Filter out truly empty lines for efficiency
+            non_empty_inputs = [t for t, e in zip(translatable_texts, empty_flags) if not e]
+            if not non_empty_inputs:
+                results.extend(["" for _ in batch])
+                continue
+
             encoded = self.tokenizer(
-                batch,
+                non_empty_inputs,
                 return_tensors="pt",
                 padding=True,
                 truncation=True,
-                max_length=256
+                max_length=512
             ).to(self.device)
+
             with torch.no_grad():
                 generated = self.model.generate(
                     **encoded,
                     forced_bos_token_id=tgt_id,
-                    max_length=256,
+                    max_length=512,
                     num_beams=num_beams,
                     early_stopping=True
                 )
-            translated = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
-            results.extend(translated)
+
+            translated_batch = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
+
+            # Reinsert translated results
+            idx = 0
+            for prefix, was_empty in zip(metadata_prefixes, empty_flags):
+                if was_empty:
+                    results.append("")
+                    continue
+                translated_text = translated_batch[idx]
+                idx += 1
+
+                # Clean up spaces around tags and \N
+                translated_text = re.sub(r'\s*\\N\s*', r'\\N', translated_text)
+                translated_text = re.sub(r'\s*({\\[^}]+})\s*', r'\1', translated_text)
+
+                final_line = prefix + translated_text if prefix else translated_text
+                results.append(final_line)
+
             if progress_callback:
                 progress_callback(min(i + batch_size, total), total)
+
         return results
     
 
@@ -289,14 +348,18 @@ class SubtitleTranslator:
         return path
 
     def translate_ass_file(self, input_path: str, src_lang: str, tgt_lang: str,
-                           n_tag_idx: int = 0, progress_callback=None) -> Tuple[str, List[str], List[str]]:
+                           n_tag_idx: int = 0, progress_callback=None, preparing_callback=None) -> Tuple[str, List[str], List[str]]:
         """Translate .ass file, grouping by speaker if possible."""
         import time
         start_time = time.time()
+        if preparing_callback:
+            preparing_callback("Reading and parsing .ass file... (Preparation time depends on the amount of lines in the file)")
         with open(input_path, 'r', encoding='utf-8-sig') as f:
             lines = f.readlines()
 
         # Separate header and dialogue
+        import time as _time
+        _parse_start = _time.perf_counter()
         header = []
         dialogues = []
         in_events = False
@@ -308,6 +371,10 @@ class SubtitleTranslator:
                 dialogues.append(line)
             else:
                 header.append(line)
+        _parse_elapsed = (_time.perf_counter() - _parse_start) * 1000
+        print(f"[PROFILE] ASS header/dialogue split: {_parse_elapsed:.2f} ms for {len(lines)} lines")
+        if preparing_callback:
+            preparing_callback("Preparing translation batches... (Preparation time depends on the amount of lines in the file)")
 
         # Try grouping by speaker
         grouped = self.group_dialogues_by_speaker(dialogues)
@@ -335,19 +402,24 @@ class SubtitleTranslator:
 
         if grouped:
             # Grouped translation: merge lines for each speaker group
+            from concurrent.futures import ThreadPoolExecutor
             texts_to_translate = []
             original_texts = []
             all_tags = []
             n_tag_counts = []
+            merged_texts = []
             for group in grouped:
                 merged_text = ' '.join(group["lines"])
                 original_texts.append(merged_text)
                 n_count = sum(len(re.findall(r'\\N', t, re.IGNORECASE)) for t in group["lines"])
                 n_tag_counts.append(n_count)
                 clean_text = re.sub(r'\\N', ' ', merged_text, flags=re.IGNORECASE)
-                protected, tags = self.protect_tags(clean_text)
-                all_tags.append(tags)
-                texts_to_translate.append(protected)
+                merged_texts.append(clean_text)
+            # Parallel protect_tags
+            with ThreadPoolExecutor() as executor:
+                tag_results = list(executor.map(self.protect_tags, merged_texts))
+            texts_to_translate = [r[0] for r in tag_results]
+            all_tags = [r[1] for r in tag_results]
 
             # Translate
             translated = self.translate(texts_to_translate, src_lang, tgt_lang,
@@ -387,10 +459,12 @@ class SubtitleTranslator:
 
         else:
             # Fallback: line-by-line translation as before
+            from concurrent.futures import ThreadPoolExecutor
             texts_to_translate = []
             original_texts = []
             all_tags = []  # Store tags for each line
             n_tag_counts = []
+            clean_texts = []
             for line in dialogues:
                 parts = line.split(',', 9)
                 if len(parts) >= 10:
@@ -399,9 +473,12 @@ class SubtitleTranslator:
                     n_count = len(re.findall(r'\\N', text, re.IGNORECASE))
                     n_tag_counts.append(n_count)
                     clean_text = re.sub(r'\\N', ' ', text, flags=re.IGNORECASE)
-                    protected, tags = self.protect_tags(clean_text)
-                    all_tags.append(tags)
-                    texts_to_translate.append(protected)
+                    clean_texts.append(clean_text)
+            # Parallel protect_tags
+            with ThreadPoolExecutor() as executor:
+                tag_results = list(executor.map(self.protect_tags, clean_texts))
+            texts_to_translate = [r[0] for r in tag_results]
+            all_tags = [r[1] for r in tag_results]
 
             # Translate
             translated = self.translate(texts_to_translate, src_lang, tgt_lang,
@@ -435,10 +512,12 @@ class SubtitleTranslator:
             return out_path, original_texts, final_texts
     
     def translate_srt_file(self, input_path: str, src_lang: str, tgt_lang: str,
-                           progress_callback=None) -> Tuple[str, List[str], List[str]]:
+                           progress_callback=None, preparing_callback=None) -> Tuple[str, List[str], List[str]]:
         """Translate .srt file."""
         import time
         start_time = time.time()
+        if preparing_callback:
+            preparing_callback("Reading and parsing .srt file... (Preparation time depends on the amount of lines in the file)")
         with open(input_path, 'r', encoding='utf-8-sig') as f:
             content = f.read()
 
@@ -462,6 +541,8 @@ class SubtitleTranslator:
                 protected, _ = self.protect_tags(text)
                 texts_to_translate.append(protected)
                 block_data.append((index_line, time_line))
+        if preparing_callback:
+            preparing_callback("Preparing translation batches... (Preparation time depends on the amount of lines in the file)")
 
         # Translate
         translated = self.translate(texts_to_translate, src_lang, tgt_lang,
@@ -515,10 +596,12 @@ class SubtitleTranslator:
         return out_path, original_texts, final_texts
     
     def translate_txt_file(self, input_path: str, src_lang: str, tgt_lang: str,
-                           progress_callback=None) -> Tuple[str, List[str], List[str]]:
+                           progress_callback=None, preparing_callback=None) -> Tuple[str, List[str], List[str]]:
         """Translate .txt file."""
         import time
         start_time = time.time()
+        if preparing_callback:
+            preparing_callback("Reading and parsing .txt file... (Preparation time depends on the amount of lines in the file)")
         with open(input_path, 'r', encoding='utf-8-sig') as f:
             lines = f.readlines()
 
@@ -533,6 +616,8 @@ class SubtitleTranslator:
                 original_texts.append(stripped)
                 texts_to_translate.append(stripped)
                 line_indices.append(i)
+        if preparing_callback:
+            preparing_callback("Preparing translation batches... (Preparation time depends on the amount of lines in the file)")
 
         # Translate
         translated = self.translate(texts_to_translate, src_lang, tgt_lang,
@@ -679,12 +764,17 @@ def run_gui():
     start_btn = tk.Button(root, text="Start Translation", width=20, bg="#4CAF50", fg="white")
     start_btn.grid(row=5, column=0, columnspan=3, pady=10)
     
+
     def update_progress(current, total):
         """Update progress display."""
         if total > 0:
             pct = int((current / total) * 100)
             progress_label.config(text=f"Translation: {pct}%")
             root.update_idletasks()
+
+    def update_preparing(status):
+        status_label.config(text=status)
+        root.update_idletasks()
     
     def show_review(originals, translations, output_path):
         """Show review window with side-by-side layout, optionally showing speaker names."""
@@ -820,15 +910,15 @@ def run_gui():
                 if ftype == "ass":
                     output_path, originals, translations = translator.translate_ass_file(
                         path, src_lang.get(), tgt_lang.get(),
-                        n_tag_wordidx.get(), update_progress
+                        n_tag_wordidx.get(), update_progress, update_preparing
                     )
                 elif ftype == "srt":
                     output_path, originals, translations = translator.translate_srt_file(
-                        path, src_lang.get(), tgt_lang.get(), update_progress
+                        path, src_lang.get(), tgt_lang.get(), update_progress, update_preparing
                     )
                 else:  # txt
                     output_path, originals, translations = translator.translate_txt_file(
-                        path, src_lang.get(), tgt_lang.get(), update_progress
+                        path, src_lang.get(), tgt_lang.get(), update_progress, update_preparing
                     )
 
                 status_label.config(text="Complete!")
@@ -889,21 +979,24 @@ def run_cli():
     def progress_callback(current, total):
         pct = int((current / total) * 100)
         print(f"\rProgress: {current}/{total} ({pct}%)", end='', flush=True)
+
+    def preparing_callback(status):
+        print(status)
     
     # Translate
     try:
         if ext == 'ass':
             output_path, _, _ = translator.translate_ass_file(
                 args.input_file, args.src, args.tgt,
-                args.nwordix, progress_callback
+                args.nwordix, progress_callback, preparing_callback
             )
         elif ext == 'srt':
             output_path, _, _ = translator.translate_srt_file(
-                args.input_file, args.src, args.tgt, progress_callback
+                args.input_file, args.src, args.tgt, progress_callback, preparing_callback
             )
         else:  # txt
             output_path, _, _ = translator.translate_txt_file(
-                args.input_file, args.src, args.tgt, progress_callback
+                args.input_file, args.src, args.tgt, progress_callback, preparing_callback
             )
         
         print(f"\n\nSuccess! Saved to: {output_path}")
