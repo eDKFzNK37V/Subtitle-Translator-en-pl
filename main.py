@@ -54,7 +54,7 @@ class SubtitleTranslator:
     
     # Only match {\...} tags, not \N or similar linebreaks
     TAG_ONLY = re.compile(r"({\\.*?})")
-    TAG_OR_ESCAPE = re.compile(r"({\\.*?})|(\\\[NnHhRr])")
+    TAG_OR_ESCAPE = re.compile(r"({\\.*?})|(\\[NnHhRr])")
     
     def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 32, num_beams: int = 2, 
                  lora_adapter: Optional[str] = None, use_fp16: bool = True, use_quantization: bool = False,
