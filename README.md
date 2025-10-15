@@ -1,188 +1,131 @@
-# NLLB-3.3B Translation App for .ass Subtitle Files
+# Subtitle Translator (English ↔ Polish, etc.)
 
-A Python application that translates .ass (Advanced SubStation Alpha) subtitle files using Facebook Meta's NLLB-200-3.3B model. The app preserves formatting, timestamps, and styling tags while providing high-quality neural machine translation.
+A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and `.txt` formats. Powered by NLLB models (Meta AI) with optional LoRA adapter support for custom fine-tuned models. Includes both a GUI and CLI.
+
+---
 
 ## Features
 
-- 🌍 Supports 200+ languages via NLLB-200-3.3B model
-- 📝 Preserves .ass file formatting and structure
-- 🏷️ Avoids translating style tags and control sequences
-- ⏱️ Maintains timestamps and synchronization
-- 💬 Optimized for dialogue translation
-- 🚀 CUDA acceleration support
-- 🎯 Handles complex .ass formatting (bold, italic, colors, line breaks)
+- **Batch translation** with NLLB-200 (1.3B/3.3B) or your own LoRA adapters
+- **⚡ 10× faster** with optimizations: FP16, quantization, adaptive batching (see [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md))
+- **GUI** (Tkinter) and **CLI** modes
+- **Speaker grouping** for `.ass` files
+- **Subtitle tag protection** and restoration
+- **No file overwrite**: output files are auto-incremented if a name conflict exists
+- **Customizable batch size, beam search, and \N tag insertion**
+- **Translation log** for every run
 
-## Requirements
-
-- Python 3.11+
-- CUDA 12.1 (for GPU acceleration)
-- ~13GB disk space for the NLLB-3.3B model
-- ~7GB GPU memory (recommended)
+---
 
 ## Installation
 
-See [INSTALL.md](INSTALL.md) for detailed installation instructions.
+1. **Clone the repository**
+2. **Install Python 3.8+**
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   # For LoRA support:
+   pip install peft
+   # For CUDA (optional):
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+   ```
+4. **Model auto-download:** The NLLB model will be automatically downloaded from HuggingFace (e.g. `facebook/nllb-200-1.3B` or `facebook/nllb-200-3.3B`) on first launch if not present locally. No manual download required unless you want to use a local/offline copy.
 
-**Quick Start:**
-```bash
-git clone https://github.com/eDKFzNK37V/NLLB-3.3-test.git
-cd NLLB-3.3-test
-pip install -r requirements.txt
-```
+---
 
 ## Usage
 
-For detailed usage examples and scenarios, see [USAGE.md](USAGE.md).
-
-For translation examples showing input/output, see [EXAMPLES.md](EXAMPLES.md).
-
-### Basic Usage
+### GUI
 
 ```bash
-python translate_ass.py input.ass output.ass <source_lang> <target_lang>
+python main.py
 ```
 
-### Examples
+- Select your subtitle file
+- (Optional) Select a LoRA adapter directory
+- Choose source/target language, format, and advanced options
+- Click **Start Translation**
 
-**Translate from English to French:**
-```bash
-python translate_ass.py example.ass output_french.ass eng fra
-```
-
-**Translate from Japanese to English:**
-```bash
-python translate_ass.py japanese_subs.ass english_subs.ass jpn eng
-```
-
-**Translate from Spanish to German:**
-```bash
-python translate_ass.py spanish.ass german.ass spa deu
-```
-
-### Command-Line Options
-
-```
-positional arguments:
-  input                 Input .ass file path
-  output                Output .ass file path
-  src_lang             Source language code (e.g., eng, jpn, fra)
-  tgt_lang             Target language code (e.g., eng, fra, spa)
-
-optional arguments:
-  -h, --help           Show help message
-  --model MODEL        Model name (default: facebook/nllb-200-3.3B)
-  --device {cuda,cpu}  Device to use (default: auto-detect)
-```
-
-### Supported Languages
-
-Common language codes (3-letter):
-
-| Code | Language | Code | Language | Code | Language |
-|------|----------|------|----------|------|----------|
-| eng | English | fra | French | deu | German |
-| spa | Spanish | ita | Italian | jpn | Japanese |
-| kor | Korean | zho | Chinese | rus | Russian |
-| ara | Arabic | por | Portuguese | nld | Dutch |
-| pol | Polish | tur | Turkish | hin | Hindi |
-| vie | Vietnamese | tha | Thai | ind | Indonesian |
-
-The NLLB model supports 200+ languages. The above are pre-configured, but you can add more by editing the `LANG_CODES` dictionary in `translate_ass.py`.
-
-## How It Works
-
-1. **File Parsing**: The app parses the .ass file, separating header information from dialogue lines.
-
-2. **Tag Protection**: Style tags (like `{\i1}`, `{\b1}`, `\N`, etc.) are temporarily replaced with placeholders to prevent translation.
-
-3. **Translation**: Text is translated using the NLLB-200-3.3B model with beam search for high-quality results.
-
-4. **Tag Restoration**: Original tags are restored to their positions in the translated text.
-
-5. **File Output**: The translated dialogues are combined with the original header to create a properly formatted .ass file.
-
-## Example .ass File
-
-An example subtitle file (`example.ass`) is included in the repository. It demonstrates various .ass features:
-- Basic dialogues
-- Italic text formatting
-- Bold text formatting
-- Line breaks
-- Colored text
-
-You can use it to test the translation:
-```bash
-python translate_ass.py example.ass example_translated.ass eng fra
-```
-
-### Batch Translation
-
-Translate multiple files at once:
+### CLI
 
 ```bash
-python batch_translate.py input_folder/ output_folder/ eng fra
+# Basic usage (with FP16 and batch size 32 by default)
+python main.py input.ass --src en --tgt pl
+
+# With LoRA adapter
+python main.py input.ass --src en --tgt pl --lora-adapter ./outputs/lora_adapter
+
+# With quantization for maximum speed
+python main.py input.ass --src en --tgt pl --quantize --quantize-bits 4
+
+# Enable speaker grouping (for .ass with character names)
+python main.py input.ass --src en --tgt pl --enable-grouping
+
+# Disable optimizations (CPU mode)
+python main.py input.ass --src en --tgt pl --no-fp16 --batch-size 4
 ```
 
-This will translate all .ass files in the input folder and save them to the output folder.
+**Common CLI options:**
+- `--src` / `--tgt`: Language codes (en, pl, ja, fr, de)
+- `--batch-size`: Batch size (default: 32, adaptive on OOM)
+- `--fp16` / `--no-fp16`: Enable/disable half precision (default: enabled on GPU)
+- `--quantize`: Enable quantization for 2-3× speedup
+- `--quantize-bits`: Quantization bits (4 or 8)
+- `--enable-grouping`: Group by speaker for .ass files with rich character names
+- `--lora-adapter`: Path to LoRA adapter directory (optional)
+- `--nwordix`: Word index for \N tag insertion (ASS only)
 
-## Technical Details
+**📖 For detailed optimization guide, see [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md)**
 
-### Dependencies
+### Output
 
-- **PyTorch 2.5.1 (CUDA 12.1)**: Deep learning framework
-- **Transformers**: HuggingFace library for NLLB model
-- **SentencePiece**: Tokenization
-- **tqdm**: Progress bars
+- Translated file and log are saved in the same directory as the input.
+- If a file exists, a number is appended (e.g. `file_pl_1.ass`).
 
-### Model Information
+---
 
-- **Model**: facebook/nllb-200-3.3B
-- **Type**: Multilingual sequence-to-sequence transformer
-- **Parameters**: 3.3 billion
-- **Languages**: 200+
-- **Use Case**: High-quality neural machine translation
+## Custom Model/Adapter
 
-### Performance
+- Place your LoRA adapter in a directory (e.g. `outputs/lora_adapter/`)
+- Select it in the GUI or pass `--lora-adapter` in CLI
+- The base model (e.g. `facebook/nllb-200-1.3B`) must be available locally or via HuggingFace
 
-- First run will download the ~13GB model (cached for future use)
-- Translation speed depends on:
-  - GPU availability (CUDA highly recommended)
-  - Text length
-  - Number of dialogue lines
-- Typical speed: ~0.5-2 seconds per dialogue line with GPU
+---
+
+## Supported Languages
+
+- English (`en`)
+- Polish (`pl`)
+- Japanese (`ja`)
+- French (`fr`)
+- German (`de`)
+
+Add more by editing the `LANG_CODES` dictionary in `main.py`.
+
+---
 
 ## Troubleshooting
 
-### CUDA Out of Memory
+- **Model loading fails:** Check RAM/VRAM, CUDA, and model path
+- **peft not installed:** `pip install peft`
+- **GUI not launching:** Ensure Tkinter is installed (comes with most Python distributions)
+- **Output not appearing:** Check for errors in the terminal/console
 
-If you encounter CUDA out of memory errors:
-1. Reduce batch size (the app processes one line at a time by default)
-2. Use CPU mode: `--device cpu`
-3. Use a smaller model variant if available
-
-### Model Download Issues
-
-The model will be automatically downloaded on first use. If download fails:
-1. Check internet connection
-2. Ensure sufficient disk space (~13GB)
-3. Try downloading manually from HuggingFace
-
-### Import Errors
-
-If you get import errors:
-```bash
-pip install --upgrade -r requirements.txt
-```
+---
 
 ## License
 
-This project uses the NLLB-200 model which is licensed under CC-BY-NC 4.0.
+MIT
 
-## Contributing
+---
 
-Contributions are welcome! Please feel free to submit issues or pull requests.
+## Credits
 
-## Acknowledgments
+- Meta AI (NLLB)
+- HuggingFace Transformers
+- PEFT (LoRA)
+- tqdm
 
-- Facebook AI Research for the NLLB model
-- HuggingFace for the Transformers library
+---
+
+For more details, see `main.py` and `requirements.txt`.

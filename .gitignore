@@ -1,57 +1,9 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-subtitle-env/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Ignore everything
+/*
 
-# Virtual environments
-venv/
-ENV/
-env/
-.venv
+!README.md
+!main.py
+!requirements.txt
+!*.md
+!LICENSE
 
-# PyTorch
-*.pth
-*.pt
-
-# Model cache (HuggingFace)
-models/
-.cache/
-huggingface/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Output files (translated subtitles)
-*_translated.ass
-output*.ass
