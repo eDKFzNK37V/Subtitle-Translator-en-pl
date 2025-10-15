@@ -6,5 +6,4 @@
 !requirements.txt
 !*.md
 !LICENSE
-!bug-reproduction-instructions.yml
-!dependency-review.yml
+!/.github/
