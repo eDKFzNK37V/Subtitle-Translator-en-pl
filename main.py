@@ -791,7 +791,7 @@ def run_gui():
     
     root = tk.Tk()
     root.title("Subtitle Translator (NLLB)")
-    root.geometry("580x340")
+    root.geometry("580x440")
     
     # Variables
     file_path = tk.StringVar()
@@ -803,7 +803,7 @@ def run_gui():
     num_beams_var = tk.IntVar(value=2)
     use_fp16_var = tk.BooleanVar(value=True)
     use_quantization_var = tk.BooleanVar(value=False)
-    quantization_bits_var = tk.IntVar(value=4)
+    quantization_bits_var = tk.StringVar(value="4")
     enable_grouping_var = tk.BooleanVar(value=False)  # Disabled by default for safety
     
     LANG_OPTIONS = ["en", "pl", "ja", "fr", "de"]
@@ -883,7 +883,7 @@ def run_gui():
     tk.Checkbutton(opt_frame, text="FP16 (half precision)", variable=use_fp16_var).grid(row=0, column=0, sticky="w", padx=2)
     tk.Checkbutton(opt_frame, text="Quantization", variable=use_quantization_var).grid(row=0, column=1, sticky="w", padx=2)
     tk.Label(opt_frame, text="Bits:").grid(row=0, column=2, sticky="w", padx=(10,2))
-    tk.OptionMenu(opt_frame, quantization_bits_var, 4, 8).grid(row=0, column=3, sticky="w", padx=2)
+    tk.OptionMenu(opt_frame, quantization_bits_var, "4", "8").grid(row=0, column=3, sticky="w", padx=2)
 
     # Progress
     progress_label = tk.Label(root, text="Translation: 0%", font=("Arial", 9))
@@ -1033,7 +1033,7 @@ def run_gui():
                         lora_adapter=lora_path,
                         use_fp16=use_fp16_var.get(),
                         use_quantization=use_quantization_var.get(),
-                        quantization_bits=quantization_bits_var.get()
+                        quantization_bits=int(quantization_bits_var.get())
                     )
 
                 status_label.config(text="Translating...")
