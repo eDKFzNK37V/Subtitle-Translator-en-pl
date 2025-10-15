@@ -7,6 +7,7 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 ## Features
 
 - **Batch translation** with NLLB-200 (1.3B/3.3B) or your own LoRA adapters
+- **⚡ 10× faster** with optimizations: FP16, quantization, adaptive batching (see [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md))
 - **GUI** (Tkinter) and **CLI** modes
 - **Speaker grouping** for `.ass` files
 - **Subtitle tag protection** and restoration
@@ -48,12 +49,29 @@ python main.py
 ### CLI
 
 ```bash
-python main.py input.ass --src en --tgt pl --batch-size 8 --num-beams 2 --lora-adapter ./outputs/lora_adapter
+# Basic usage (with FP16 and batch size 32 by default)
+python main.py input.ass --src en --tgt pl
+
+# With LoRA adapter
+python main.py input.ass --src en --tgt pl --lora-adapter ./outputs/lora_adapter
+
+# With quantization for maximum speed
+python main.py input.ass --src en --tgt pl --quantize --quantize-bits 4
+
+# Disable optimizations (CPU mode)
+python main.py input.ass --src en --tgt pl --no-fp16 --batch-size 4
 ```
 
+**Common CLI options:**
 - `--src` / `--tgt`: Language codes (en, pl, ja, fr, de)
-- `--lora-adapter`: Path to your LoRA adapter directory (optional)
+- `--batch-size`: Batch size (default: 32, adaptive on OOM)
+- `--fp16` / `--no-fp16`: Enable/disable half precision (default: enabled on GPU)
+- `--quantize`: Enable quantization for 2-3× speedup
+- `--quantize-bits`: Quantization bits (4 or 8)
+- `--lora-adapter`: Path to LoRA adapter directory (optional)
 - `--nwordix`: Word index for \N tag insertion (ASS only)
+
+**📖 For detailed optimization guide, see [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md)**
 
 ### Output
 
