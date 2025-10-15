@@ -132,7 +132,8 @@ class SubtitleTranslator:
         self.num_beams = num_beams
         print(f"Model loaded! (FP16: {self.use_fp16}, Quantized: {self.use_quantization})")
 
-    def group_dialogues_by_speaker(self, dialogue_lines, enable_grouping=False):
+    @staticmethod
+    def group_dialogues_by_speaker(dialogue_lines, enable_grouping=False):
             """
             Group consecutive dialogue lines by the same speaker (if names detected).
             Expects a list of ASS dialogue lines (strings).
@@ -924,7 +925,7 @@ def run_gui():
                     with open(input_path, 'r', encoding='utf-8-sig') as f:
                         lines = f.readlines()
                     dialogues = [line for line in lines if line.startswith('Dialogue:')]
-                    grouped = SubtitleTranslator().group_dialogues_by_speaker(dialogues)
+                    grouped = SubtitleTranslator.group_dialogues_by_speaker(dialogues, enable_grouping=True)
                     if grouped and len(grouped) == len(originals):
                         speaker_names = [g['name'] for g in grouped]
         except Exception:
@@ -1040,8 +1041,31 @@ def run_gui():
                     with open(output_path, 'w', encoding='utf-8-sig') as f:
                         f.writelines(lines)
                 
+                # Update the log file with corrected translations
+                log_path = output_path.rsplit('.', 1)[0] + '_log.txt'
+                if os.path.exists(log_path):
+                    try:
+                        # Read the existing log file
+                        with open(log_path, 'r', encoding='utf-8') as f:
+                            log_lines = f.readlines()
+                        
+                        # Update translations in the log
+                        # Format: [Line N]\nOriginal: ...\nTranslation: ...\n
+                        trans_idx = 0
+                        for i, line in enumerate(log_lines):
+                            if line.startswith('Translation:') and trans_idx < len(edited):
+                                # Replace the translation line with edited version
+                                log_lines[i] = f"Translation: {edited[trans_idx]}\n"
+                                trans_idx += 1
+                        
+                        # Write back the updated log
+                        with open(log_path, 'w', encoding='utf-8') as f:
+                            f.writelines(log_lines)
+                    except Exception as log_err:
+                        print(f"Warning: Could not update log file: {log_err}")
+                
                 review_win.destroy()
-                messagebox.showinfo("Success", f"Translation saved!\n\nOutput: {output_path}")
+                messagebox.showinfo("Success", f"Translation saved!\n\nOutput: {output_path}\nLog file updated with corrections.")
                 reset_ui()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save edits:\n{str(e)}")
