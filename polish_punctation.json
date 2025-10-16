@@ -1,0 +1,166 @@
+{
+  "polish_punctuation_rules": {
+    "comma": {
+      "symbol": ",",
+      "rules": [
+        {
+          "id": "comma_subordinate_clause",
+          "description": "Use commas before and after subordinate clauses introduced by conjunctions such as 'że', 'aby', 'gdy', 'kiedy', 'choć', 'podczas gdy'.",
+          "example_correct": "Powiedział, że przyjdzie jutro.",
+          "example_incorrect": "Powiedział że przyjdzie jutro."
+        },
+        {
+          "id": "comma_coordinate_clauses",
+          "description": "Do not use a comma before 'i', 'oraz', 'a', 'ani' connecting equal clauses, unless they are repeated or introduce contrast.",
+          "example_correct": "Lubi kawę i herbatę.",
+          "example_incorrect": "Lubi kawę, i herbatę."
+        },
+        {
+          "id": "comma_introductory_phrase",
+          "description": "Separate introductory phrases or interjections with commas.",
+          "example_correct": "Tak, masz rację.",
+          "example_incorrect": "Tak masz rację."
+        },
+        {
+          "id": "comma_participial_phrase",
+          "description": "Use commas around participial phrases (imiesłowy przysłówkowe).",
+          "example_correct": "Szedł, nie patrząc na boki.",
+          "example_incorrect": "Szedł nie patrząc na boki."
+        },
+        {
+          "id": "comma_apposition",
+          "description": "Use commas to enclose non-restrictive appositions.",
+          "example_correct": "Jan Kowalski, mój sąsiad, wyjechał wczoraj.",
+          "example_incorrect": "Jan Kowalski mój sąsiad wyjechał wczoraj."
+        },
+        {
+          "id": "comma_enumeration",
+          "description": "Separate elements in a list or series with commas.",
+          "example_correct": "Kupił jabłka, gruszki, śliwki i banany.",
+          "example_incorrect": "Kupił jabłka gruszki śliwki i banany."
+        }
+      ]
+    },
+
+    "period": {
+      "symbol": ".",
+      "rules": [
+        {
+          "id": "period_end_sentence",
+          "description": "End declarative sentences with a period.",
+          "example_correct": "To jest dom.",
+          "example_incorrect": "To jest dom"
+        },
+        {
+          "id": "period_abbreviation",
+          "description": "Use a period in abbreviations unless the last letter is also the last letter of the word.",
+          "example_correct": "dr, prof., inż.",
+          "example_incorrect": "dr. prof inż"
+        }
+      ]
+    },
+
+    "semicolon": {
+      "symbol": ";",
+      "rules": [
+        {
+          "id": "semicolon_complex_list",
+          "description": "Use semicolons to separate items in a list when the items themselves contain commas.",
+          "example_correct": "Na spotkaniu byli: Jan Kowalski, prezes firmy; Anna Nowak, dyrektor; oraz Piotr Lis, sekretarz.",
+          "example_incorrect": "Na spotkaniu byli: Jan Kowalski, prezes firmy, Anna Nowak, dyrektor, oraz Piotr Lis, sekretarz."
+        }
+      ]
+    },
+
+    "colon": {
+      "symbol": ":",
+      "rules": [
+        {
+          "id": "colon_introduce_list",
+          "description": "Use a colon to introduce explanations, quotations, or lists.",
+          "example_correct": "Powiedział jedno: nie pójdzie tam.",
+          "example_incorrect": "Powiedział jedno, nie pójdzie tam."
+        }
+      ]
+    },
+
+    "dash": {
+      "symbol": "—",
+      "rules": [
+        {
+          "id": "dash_parenthetical",
+          "description": "Use em dash (myślnik) with spaces to mark interruptions or parenthetical remarks.",
+          "example_correct": "To był on — mój dawny przyjaciel.",
+          "example_incorrect": "To był on—mój dawny przyjaciel."
+        },
+        {
+          "id": "dash_dialogue",
+          "description": "Use dash at the start of spoken lines in dialogues instead of quotation marks.",
+          "example_correct": "— Co słychać? — zapytała.",
+          "example_incorrect": "„Co słychać?” zapytała."
+        }
+      ]
+    },
+
+    "hyphen": {
+      "symbol": "-",
+      "rules": [
+        {
+          "id": "hyphen_compound_adjectives",
+          "description": "Use hyphen (łącznik) without spaces in compound adjectives like 'czarno-biały'.",
+          "example_correct": "film czarno-biały",
+          "example_incorrect": "film czarno - biały"
+        },
+        {
+          "id": "hyphen_units",
+          "description": "Use hyphen to connect numbers and unit symbols in complex forms, e.g. 'ISO-8859-2'."
+        }
+      ]
+    },
+
+    "quotation_marks": {
+      "symbols": ["„", "”", "‘", "’"],
+      "rules": [
+        {
+          "id": "quotes_polish_style",
+          "description": "Use Polish quotation marks: „ … ” for outer quotes, and ‘ … ’ for nested quotes.",
+          "example_correct": "Powiedział: „To jest ‘ważne’.”",
+          "example_incorrect": "Powiedział: \"To jest 'ważne'.\""
+        }
+      ]
+    },
+
+    "ellipsis": {
+      "symbol": "...",
+      "rules": [
+        {
+          "id": "ellipsis_usage",
+          "description": "Use ellipsis to indicate omission or unfinished thought. No space before, one space after.",
+          "example_correct": "Nie wiem... może jutro.",
+          "example_incorrect": "Nie wiem ...może jutro."
+        }
+      ]
+    },
+
+    "spacing": {
+      "rules": [
+        {
+          "id": "spacing_basic",
+          "description": "No space before comma, period, semicolon, or colon; one space after.",
+          "example_correct": "To jest test, prawda?",
+          "example_incorrect": "To jest test ,prawda ?"
+        },
+        {
+          "id": "spacing_dash",
+          "description": "Use spaces around em dash in Polish text; none around hyphen.",
+          "example_correct": "Był zmęczony — i głodny.",
+          "example_incorrect": "Był zmęczony—i głodny."
+        },
+        {
+          "id": "spacing_abbreviation",
+          "description": "Use non-breaking space between number and unit (e.g. '5 kg')."
+        }
+      ]
+    }
+  }
+}

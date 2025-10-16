@@ -9,3 +9,5 @@
 !*.md
 !LICENSE
 !/.github/
+!polish_punctation.json
+!postprocess_subtitles.py
