@@ -7,7 +7,7 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 ## Features
 
 - **Batch translation** with NLLB-200 (1.3B/3.3B) or your own LoRA adapters
-- **⚡ 10× faster** with optimizations: FP16, quantization, adaptive batching (see [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md))
+- **⚡ 10× faster** with optimizations: FP16, quantization, adaptive batching
 - **GUI** (Tkinter) and **CLI** modes
 - **Speaker grouping** for `.ass` files
 - **Subtitle tag protection** and restoration
@@ -17,115 +17,403 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 
 ---
 
-## Installation
+## Table of contents
 
-1. **Clone the repository**
-2. **Install Python 3.8+**
-3. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   # For LoRA support:
-   pip install peft
-   # For CUDA (optional):
-   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-   ```
-4. **Model auto-download:** The NLLB model will be automatically downloaded from HuggingFace (e.g. `facebook/nllb-200-1.3B` or `facebook/nllb-200-3.3B`) on first launch if not present locally. No manual download required unless you want to use a local/offline copy.
+- Installation
+- Quick Start
+- GUI Layout
+- Usage Examples
+- File format & Tag handling
+- Examples (input → expected output)
+- Performance & Optimizations
+- Troubleshooting
+- Testing
+- Developer notes
+- Change log
 
 ---
 
-## Usage
+## Installation
 
-### GUI
+System requirements
+
+- Python: 3.11 or higher
+- OS: Linux, Windows or macOS
+- GPU (recommended): NVIDIA GPU with CUDA 12.1 support
+- RAM: At least 8GB (16GB recommended)
+- Disk space: ~15GB for model and dependencies
+
+Step-by-step
+
+1. **Clone the repository:**
+
+```bash
+git clone https://github.com/eDKFzNK37V/NLLB-3.3-test.git
+cd NLLB-3.3-test
+```
+
+2. Install Python 3.11+ (use your platform's package manager or download from python.org).
+3. (Optional) Create and activate a virtual environment:
+
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+```
+
+4. Install dependencies:
+
+- GPU (recommended):
+
+```bash
+pip install -r requirements.txt
+```
+
+- CPU-only (if you don't have CUDA):
+
+```bash
+pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu
+pip install transformers sentencepiece protobuf tqdm
+```
+
+Notes on model download: On first run the NLLB model will be downloaded automatically and may take a while (several minutes to tens of minutes depending on internet speed).
+
+---
+
+## Quick Start
+
+- GUI mode (default):
 
 ```bash
 python main.py
 ```
 
-- Select your subtitle file
-- (Optional) Select a LoRA adapter directory
-- Choose source/target language, format, and advanced options
-- Click **Start Translation**
-
-### CLI
+- CLI mode:
 
 ```bash
-# Basic usage (with FP16 and batch size 32 by default)
 python main.py input.ass --src en --tgt pl
-
-# With LoRA adapter
-python main.py input.ass --src en --tgt pl --lora-adapter ./outputs/lora_adapter
-
-# With quantization for maximum speed
-python main.py input.ass --src en --tgt pl --quantize --quantize-bits 4
-
-# Enable speaker grouping (for .ass with character names)
-python main.py input.ass --src en --tgt pl --enable-grouping
-
-# Disable optimizations (CPU mode)
-python main.py input.ass --src en --tgt pl --no-fp16 --batch-size 4
 ```
 
-**Common CLI options:**
-- `--src` / `--tgt`: Language codes (en, pl, ja, fr, de)
-- `--batch-size`: Batch size (default: 32, adaptive on OOM)
-- `--fp16` / `--no-fp16`: Enable/disable half precision (default: enabled on GPU)
-- `--quantize`: Enable quantization for 2-3× speedup
-- `--quantize-bits`: Quantization bits (4 or 8)
-- `--enable-grouping`: Group by speaker for .ass files with rich character names
-- `--lora-adapter`: Path to LoRA adapter directory (optional)
-- `--nwordix`: Word index for \N tag insertion (ASS only)
+Common CLI flags:
 
-**📖 For detailed optimization guide, see [OPTIMIZATION_GUIDE.md](OPTIMIZATION_GUIDE.md)**
-
-### Output
-
-- Translated file and log are saved in the same directory as the input.
-- If a file exists, a number is appended (e.g. `file_pl_1.ass`).
+- `--device cpu` — force CPU mode
+- `--model <model-name>` — use a specific model (e.g., `facebook/nllb-200-distilled-1.3B`)
+- `--batch-size N` — set batch size (default optimized to 32)
+- `--fp16` / `--no-fp16` — enable/disable FP16
+- `--quantize --quantize-bits 4` — enable quantization (requires bitsandbytes)
 
 ---
 
-## Custom Model/Adapter
+## GUI Layout (actual implementation)
 
-- Place your LoRA adapter in a directory (e.g. `outputs/lora_adapter/`)
-- Select it in the GUI or pass `--lora-adapter` in CLI
-- The base model (e.g. `facebook/nllb-200-1.3B`) must be available locally or via HuggingFace
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ Subtitle Translator (NLLB)                                              [_][□][X] │
+├──────────────────────────────────────────────────────────────────────────────┤
+│ File Selection                                                            │
+│ ┌────────────────────────────────────────────────────────────────────────┐ │
+│ │ File:           [______________________________] [Browse]              │ │
+│ │ LoRA Adapter:   [______________________________] [Browse]              │ │
+│ └────────────────────────────────────────────────────────────────────────┘ │
+│ Translation Settings                                                       │
+│ ┌────────────────────────────────────────────────────────────────────────┐ │
+│ │ Source: [en ▼]  Target: [pl ▼]  Format: [ass ▼]                       │ │
+│ └────────────────────────────────────────────────────────────────────────┘ │
+│ Advanced Options                                                           │
+│ ┌────────────────────────────────────────────────────────────────────────┐ │
+│ │ \N index: [ 0 ]  Batch: [32]  Beams: [2]                               │ │
+│ │ [ ] Group by speaker (.ass only)                                       │ │
+│ └────────────────────────────────────────────────────────────────────────┘ │
+│ Performance Optimizations                                                  │
+│ ┌────────────────────────────────────────────────────────────────────────┐ │
+│ │ [x] FP16 (half precision)  [ ] Quantization  Bits: [4 ▼]               │ │
+│ └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                            │
+│ Translation: 0%                                                            │
+│ Ready                                                                      │
+│                                                                            │
+│                [ Start Translation ]                                       │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Widget/Control Groups:**
+
+- **File Selection:**
+  - File path entry + Browse button
+  - LoRA Adapter path entry + Browse button
+- **Translation Settings:**
+  - Source language dropdown (en, pl, ja, fr, de)
+  - Target language dropdown (en, pl, ja, fr, de)
+  - Format dropdown (ass, srt, txt)
+- **Advanced Options:**
+  - \N index spinbox (0–50)
+  - Batch size spinbox (1–64)
+  - Beams spinbox (1–10)
+  - [ ] Group by speaker (.ass only) checkbox
+- **Performance Optimizations:**
+  - [x] FP16 (half precision) checkbox
+  - [ ] Quantization checkbox
+  - Bits dropdown (4, 8)
+- **Progress/Status:**
+  - Progress label (e.g., Translation: 0%)
+  - Status label (e.g., Ready, Loading model, Translating, Complete)
+- **Action:**
+  - [ Start Translation ] button
+
+The GUI runs translation in a background thread to avoid freezing. After translation, a review window appears for manual edits before saving.
 
 ---
 
-## Supported Languages
+## Usage Examples
 
-- English (`en`)
-- Polish (`pl`)
-- Japanese (`ja`)
-- French (`fr`)
-- German (`de`)
+Single file translation:
 
-Add more by editing the `LANG_CODES` dictionary in `main.py`.
+```bash
+python translate_ass.py example.ass output_french.ass eng fra
+```
+
+Batch translation (example):
+
+```bash
+mkdir -p input_subs output_subs
+cp *.ass input_subs/
+python batch_translate.py input_subs/ output_subs/ eng fra
+```
+
+Advanced examples:
+
+- CPU mode:
+
+```bash
+python translate_ass.py input.ass output.ass eng fra --device cpu
+```
+
+- Different model:
+
+```bash
+python translate_ass.py input.ass output.ass eng fra --model facebook/nllb-200-1.3B
+```
+
+---
+
+## File formats and tag handling
+
+Supported input types:
+
+- `.ass` (Advanced SubStation Alpha)
+- `.srt` (SubRip)
+- `.txt` (plain text)
+
+Key behaviors:
+
+- `.ass` headers (Script Info, Styles, etc.) are preserved and not translated.
+- Dialogue lines are parsed and only the dialogue text is sent to the translator.
+- Formatting tags (ASS tags like `{\b1}`, `{\i1}`, `{\pos(x,y)}`) are protected by placeholders during translation and restored afterward.
+- Line breaks: `\N` and `\n` are preserved.
+- Plain text: empty or purely numeric lines are skipped.
+
+Tag protect/restore pattern (example):
+
+- Before translation: "Hello {\pos(320,240)} world" → protected: "Hello <TAG0> world"
+- After translation: "Bonjour <TAG0> monde" → restored: "Bonjour {\pos(320,240)} monde"
+
+---
+
+## Examples (input → expected output)
+
+Example 1: Simple dialogue
+
+Input (english):
+
+```
+Dialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,Hello, how are you today?
+Dialogue: 0,0:00:05.00,0:00:08.00,Default,,0,0,0,,I'm doing great, thank you!
+```
+
+Expected output (French):
+
+```
+Dialogue: 0,0:00:01.00,0:00:04.00,Default,,0,0,0,,Bonjour, comment allez-vous aujourd'hui?
+Dialogue: 0,0:00:05.00,0:00:08.00,Default,,0,0,0,,Je vais très bien, merci!
+```
+
+Example 2: Formatted text (italics preserved)
+
+Input:
+
+```
+Dialogue: 0,0:00:09.00,0:00:13.00,Default,,0,0,0,,{\i1}This is italic text{\i0} and this is normal.
+```
+
+Expected output (French):
+
+```
+Dialogue: 0,0:00:09.00,0:00:13.00,Default,,0,0,0,,{\i1}Ceci est du texte en italique{\i0} et ceci est normal.
+```
+
+Example 3: Line breaks
+
+Input:
+
+```
+Dialogue: 0,0:00:14.00,0:00:18.00,Default,,0,0,0,,{\b1}Bold text{\b0}\Nwith a line break.
+```
+
+Expected output (French):
+
+```
+Dialogue: 0,0:00:14.00,0:00:18.00,Default,,0,0,0,,{\b1}Texte en gras{\b0}\Navec un saut de ligne.
+```
+
+Header preservation: The .ass header must remain identical between input and output to maintain compatibility.
+
+---
+
+## Performance & Optimizations
+
+### Overview of Optimizations
+
+| Optimization              | Expected speedup  | Description                                       |
+| ------------------------- | ----------------- | ------------------------------------------------- |
+| Batch size 32             | ×3–4              | Increased from 8 to 32 with adaptive OOM handling |
+| FP16 mode                 | ×1.5              | Half precision inference on GPU                   |
+| Quantized model           | ×2–3              | 4-bit or 8-bit quantization                       |
+| Tokenization improvements | ×1.2              | Use max_new_tokens and optimized encoding         |
+| Combined total            | **10× or better** | All optimizations work together                   |
+
+### Expected Speedup by Optimization
+
+| Optimization                | Individual Speedup | Cumulative Speedup |
+| --------------------------- | ------------------ | ------------------ |
+| Baseline (FP32, batch=8)    | 1.0×               | 1.0×               |
+| Batch size 32               | 3-4×               | 3-4×               |
+| + FP16 mode                 | 1.5×               | 4.5-6×             |
+| + TF32 (Ampere+ GPU)        | 1.2×               | 5.4-7.2×           |
+| + Tokenization fixes        | 1.1×               | 6-8×               |
+| **OR Quantization (4-bit)** | **2-3× vs FP16**   | **9-12×**          |
+
+### Real-World Performance Estimate
+
+For a 300-line .ass subtitle file (EN→PL translation):
+
+| Configuration                  | Estimated Time  | Speedup |
+| ------------------------------ | --------------- | ------- |
+| Original (batch=8, FP32)       | ~180 seconds    | 1.0×    |
+| Batch=32 only                  | ~60 seconds     | 3.0×    |
+| Batch=32 + FP16                | ~40 seconds     | 4.5×    |
+| Batch=32 + FP16 + TF32         | ~33 seconds     | 5.5×    |
+| Batch=32 + 4-bit Quantization  | ~20 seconds     | 9.0×    |
+| **All optimizations combined** | **~18 seconds** | **10×** |
+
+_Note: Actual results depend on GPU model, text complexity, and system configuration._
+
+### Memory Savings
+
+GPU memory usage for `facebook/nllb-200-3.3B` model:
+
+| Configuration      | VRAM Required | Savings |
+| ------------------ | ------------- | ------- |
+| FP32 (original)    | ~13 GB        | -       |
+| FP16               | ~7 GB         | 46%     |
+| 8-bit quantization | ~4 GB         | 69%     |
+| 4-bit quantization | ~2.5 GB       | 81%     |
+
+### Feature Compatibility
+
+| Feature        | FP32 | FP16 | 4-bit Quant | 8-bit Quant |
+| -------------- | ---- | ---- | ----------- | ----------- |
+| GUI            | ✓    | ✓    | ✓           | ✓           |
+| CLI            | ✓    | ✓    | ✓           | ✓           |
+| LoRA adapters  | ✓    | ✓    | ✓           | ✓           |
+| All file types | ✓    | ✓    | ✓           | ✓           |
+| CPU only       | ✓    | ✗    | ✗           | ✗           |
+| Adaptive batch | ✓    | ✓    | ✓           | ✓           |
+
+### Default Behavior Changes
+
+| Setting      | Old Default | New Default | Reason               |
+| ------------ | ----------- | ----------- | -------------------- |
+| Batch size   | 8           | 32          | 3-4× faster          |
+| FP16 mode    | Off         | On (GPU)    | 1.5× faster, free    |
+| Quantization | N/A         | Off         | Opt-in for max speed |
+
+### CLI examples
+
+```bash
+# Maximum speed with 4-bit quantization
+python main.py input.ass --src en --tgt pl --quantize --quantize-bits 4
+
+# Balanced: FP16 and larger batch
+python main.py input.ass --src en --tgt pl --fp16 --batch-size 32
+```
+
+_Memory and compatibility notes:_
+
+- FP16 requires CUDA GPU. Not valid on CPU.
+- Quantization requires `bitsandbytes` and CUDA GPU.
+- Adaptive batch sizing will reduce batch size on OOM errors automatically.
 
 ---
 
 ## Troubleshooting
 
-- **Model loading fails:** Check RAM/VRAM, CUDA, and model path
-- **peft not installed:** `pip install peft`
-- **GUI not launching:** Ensure Tkinter is installed (comes with most Python distributions)
-- **Output not appearing:** Check for errors in the terminal/console
+Common issues and fixes:
+
+- "No module named 'torch'" → run `pip install -r requirements.txt`
+- CUDA version mismatch → check `nvidia-smi` and install matching PyTorch wheels
+- Out of memory → enable quantization, reduce batch size, or use CPU mode
+- Slow translation on CPU → consider using GPU or a smaller model
+- Tags translated into output → ensure input file is a valid .ass and tags match supported patterns
 
 ---
 
-## License
+## Testing
 
-MIT
+Run the repository tests to verify tag protection/restore and other functionality:
+
+```bash
+python test_translate_ass.py
+```
+
+Expected minimal test output (example):
+
+```
+Ran 6 tests
+OK
+```
+
+There are also optimization tests `test_optimizations.py` described in the performance docs.
 
 ---
 
-## Credits
+## Developer notes
 
-- Meta AI (NLLB)
-- HuggingFace Transformers
-- PEFT (LoRA)
-- tqdm
+- Everything core lives in `main.py`.
+- Key public entrypoints: the `SubtitleTranslator` class, `run_gui()` and `run_cli()`.
+- Add new languages by editing `LANG_CODES` mapping in the translator class.
+- Adjust translation parameters in `translate()` (beam size, max tokens).
+- GUI is threaded: keep long-running ops off the main thread.
+
+Small contributors checklist:
+
+- Update `requirements.txt` if you add external libraries
+- Add unit tests for new behaviors
+- Keep header parsing for `.ass` files intact
 
 ---
 
-For more details, see `main.py` and `requirements.txt`.
+## Change log (merged)
+
+This file consolidates content from:
+
+- `INSTALL.md`
+- `USAGE.md`
+- `GUI_LAYOUT.md`
+- `EXAMPLES.md`
+- `OPTIMIZATION_GUIDE.md`
+- `PERFORMANCE_SUMMARY.md`
+
+If you'd rather move sections into separate files or remove originals, let me know and I can update the repository accordingly.
+
+---
+
+End of documentation.

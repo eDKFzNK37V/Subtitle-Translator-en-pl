@@ -1,6 +1,7 @@
 # Ignore everything
 /*
 
+!.gitignore
 !README.md
 !main.py
 !requirements.txt
