@@ -17,19 +17,18 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 
 ---
 
-## Table of contents
+## Chapters
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [GUI Layout](#gui-layout)
+- [Usage Examples](#usage-examples)
+- [File format & Tag handling](#file-formats-and-tag-handling)
+- [Examples (input → expected output)](#examples-input--expected-output)
+- [Performance & Optimizations](#performance--optimizations)
+- [Troubleshooting](#troubleshooting)
+- [Testing](#testing)
+- [Developer notes](#developer-notes)
 
-- Installation
-- Quick Start
-- GUI Layout
-- Usage Examples
-- File format & Tag handling
-- Examples (input → expected output)
-- Performance & Optimizations
-- Troubleshooting
-- Testing
-- Developer notes
-- Change log
 
 ---
 
@@ -103,7 +102,7 @@ Common CLI flags:
 
 ---
 
-## GUI Layout (actual implementation)
+## GUI Layout
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
