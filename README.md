@@ -100,6 +100,8 @@ Common CLI flags:
 - `--batch-size N` — set batch size (default optimized to 32)
 - `--fp16` / `--no-fp16` — enable/disable FP16
 - `--quantize --quantize-bits 4` — enable quantization (requires bitsandbytes)
+  -- `num-beams N` — set beam search width (higher = better quality, slower; default: 2)
+  -- `enable-grouping` — group consecutive dialogue lines by speaker (for .ass files, ONLY if the dialogues have name metadata in it; default: off)
 
 ---
 
