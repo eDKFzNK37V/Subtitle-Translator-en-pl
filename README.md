@@ -17,19 +17,18 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 
 ---
 
-## Table of contents
+## Chapters
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [GUI Layout](#gui-layout)
+- [Usage Examples](#usage-examples)
+- [File format & Tag handling](#file-formats-and-tag-handling)
+- [Examples (input → expected output)](#examples-input--expected-output)
+- [Performance & Optimizations](#performance--optimizations)
+- [Troubleshooting](#troubleshooting)
+- [Testing](#testing)
+- [Developer notes](#developer-notes)
 
-- Installation
-- Quick Start
-- GUI Layout
-- Usage Examples
-- File format & Tag handling
-- Examples (input → expected output)
-- Performance & Optimizations
-- Troubleshooting
-- Testing
-- Developer notes
-- Change log
 
 ---
 
@@ -76,7 +75,7 @@ pip install transformers sentencepiece protobuf tqdm
 ```
 
 Notes on model download: On first run the NLLB model will be downloaded automatically and may take a while (several minutes to tens of minutes depending on internet speed).
-
+- [Chapters](#chapters)
 ---
 
 ## Quick Start
@@ -103,9 +102,10 @@ Common CLI flags:
   -- `num-beams N` — set beam search width (higher = better quality, slower; default: 2)
   -- `enable-grouping` — group consecutive dialogue lines by speaker (for .ass files, ONLY if the dialogues have name metadata in it; default: off)
 
+- [Chapters](#chapters)
 ---
 
-## GUI Layout (actual implementation)
+## GUI Layout
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -162,7 +162,7 @@ Common CLI flags:
   - [ Start Translation ] button
 
 The GUI runs translation in a background thread to avoid freezing. After translation, a review window appears for manual edits before saving.
-
+- [Chapters](#chapters)
 ---
 
 ## Usage Examples
@@ -217,7 +217,7 @@ Tag protect/restore pattern (example):
 
 - Before translation: "Hello {\pos(320,240)} world" → protected: "Hello <TAG0> world"
 - After translation: "Bonjour <TAG0> monde" → restored: "Bonjour {\pos(320,240)} monde"
-
+- [Chapters](#chapters)
 ---
 
 ## Examples (input → expected output)
@@ -267,7 +267,7 @@ Dialogue: 0,0:00:14.00,0:00:18.00,Default,,0,0,0,,{\b1}Texte en gras{\b0}\Navec 
 ```
 
 Header preservation: The .ass header must remain identical between input and output to maintain compatibility.
-
+- [Chapters](#chapters)
 ---
 
 ## Performance & Optimizations
@@ -338,6 +338,7 @@ GPU memory usage for `facebook/nllb-200-3.3B` model:
 | FP16 mode    | Off         | On (GPU)    | 1.5× faster, free    |
 | Quantization | N/A         | Off         | Opt-in for max speed |
 
+- [Chapters](#chapters)
 ### CLI examples
 
 ```bash
@@ -353,7 +354,7 @@ _Memory and compatibility notes:_
 - FP16 requires CUDA GPU. Not valid on CPU.
 - Quantization requires `bitsandbytes` and CUDA GPU.
 - Adaptive batch sizing will reduce batch size on OOM errors automatically.
-
+- [Chapters](#chapters)
 ---
 
 ## Troubleshooting
@@ -366,6 +367,7 @@ Common issues and fixes:
 - Slow translation on CPU → consider using GPU or a smaller model
 - Tags translated into output → ensure input file is a valid .ass and tags match supported patterns
 
+- [Chapters](#chapters)
 ---
 
 ## Testing
@@ -385,6 +387,7 @@ OK
 
 There are also optimization tests `test_optimizations.py` described in the performance docs.
 
+- [Chapters](#chapters)
 ---
 
 ## Developer notes
@@ -401,20 +404,8 @@ Small contributors checklist:
 - Add unit tests for new behaviors
 - Keep header parsing for `.ass` files intact
 
+- [Chapters](#chapters)
 ---
-
-## Change log (merged)
-
-This file consolidates content from:
-
-- `INSTALL.md`
-- `USAGE.md`
-- `GUI_LAYOUT.md`
-- `EXAMPLES.md`
-- `OPTIMIZATION_GUIDE.md`
-- `PERFORMANCE_SUMMARY.md`
-
-If you'd rather move sections into separate files or remove originals, let me know and I can update the repository accordingly.
 
 ---
 
