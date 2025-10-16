@@ -18,6 +18,7 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 ---
 
 ## Chapters
+
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [GUI Layout](#gui-layout)
@@ -28,7 +29,6 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 - [Troubleshooting](#troubleshooting)
 - [Testing](#testing)
 - [Developer notes](#developer-notes)
-
 
 ---
 
@@ -75,34 +75,37 @@ pip install transformers sentencepiece protobuf tqdm
 ```
 
 Notes on model download: On first run the NLLB model will be downloaded automatically and may take a while (several minutes to tens of minutes depending on internet speed).
+
 - [Chapters](#chapters)
+
 ---
 
 ## Quick Start
 
-- GUI mode (default):
+GUI mode (default):
 
 ```bash
-python main.py
+python subtitle_translator.py
 ```
 
-- CLI mode:
+CLI mode:
 
 ```bash
-python main.py input.ass --src en --tgt pl
+python subtitle_translator.py input.ass --src en --tgt pl
 ```
 
 Common CLI flags:
 
-- `--device cpu` — force CPU mode
-- `--model <model-name>` — use a specific model (e.g., `facebook/nllb-200-distilled-1.3B`)
-- `--batch-size N` — set batch size (default optimized to 32)
-- `--fp16` / `--no-fp16` — enable/disable FP16
-- `--quantize --quantize-bits 4` — enable quantization (requires bitsandbytes)
-  -- `num-beams N` — set beam search width (higher = better quality, slower; default: 2)
-  -- `enable-grouping` — group consecutive dialogue lines by speaker (for .ass files, ONLY if the dialogues have name metadata in it; default: off)
+`--device cpu` — force CPU mode
+`--model <model-name>` — use a specific model (e.g., `facebook/nllb-200-distilled-1.3B`)
+`--batch-size N` — set batch size (default optimized to 32)
+`--fp16` / `--no-fp16` — enable/disable FP16
+`--quantize --quantize-bits 4` — enable quantization (requires bitsandbytes)
+`--num-beams N` — set beam search width (higher = better quality, slower; default: 2)
+`--enable-grouping` — group consecutive dialogue lines by speaker (for .ass files, ONLY if the dialogues have name metadata in it; default: off)
 
 - [Chapters](#chapters)
+
 ---
 
 ## GUI Layout
@@ -162,7 +165,9 @@ Common CLI flags:
   - [ Start Translation ] button
 
 The GUI runs translation in a background thread to avoid freezing. After translation, a review window appears for manual edits before saving.
+
 - [Chapters](#chapters)
+
 ---
 
 ## Usage Examples
@@ -170,15 +175,13 @@ The GUI runs translation in a background thread to avoid freezing. After transla
 Single file translation:
 
 ```bash
-python translate_ass.py example.ass output_french.ass eng fra
+python subtitle_translator.py input.ass --src en --tgt fr
 ```
 
 Batch translation (example):
 
 ```bash
-mkdir -p input_subs output_subs
-cp *.ass input_subs/
-python batch_translate.py input_subs/ output_subs/ eng fra
+for f in input_subs/*.ass; do python subtitle_translator.py "$f" --src en --tgt fr; done
 ```
 
 Advanced examples:
@@ -186,13 +189,13 @@ Advanced examples:
 - CPU mode:
 
 ```bash
-python translate_ass.py input.ass output.ass eng fra --device cpu
+python subtitle_translator.py input.ass --src en --tgt fr --device cpu
 ```
 
 - Different model:
 
 ```bash
-python translate_ass.py input.ass output.ass eng fra --model facebook/nllb-200-1.3B
+python subtitle_translator.py input.ass --src en --tgt fr --model facebook/nllb-200-1.3B
 ```
 
 ---
@@ -218,6 +221,7 @@ Tag protect/restore pattern (example):
 - Before translation: "Hello {\pos(320,240)} world" → protected: "Hello <TAG0> world"
 - After translation: "Bonjour <TAG0> monde" → restored: "Bonjour {\pos(320,240)} monde"
 - [Chapters](#chapters)
+
 ---
 
 ## Examples (input → expected output)
@@ -267,7 +271,9 @@ Dialogue: 0,0:00:14.00,0:00:18.00,Default,,0,0,0,,{\b1}Texte en gras{\b0}\Navec 
 ```
 
 Header preservation: The .ass header must remain identical between input and output to maintain compatibility.
+
 - [Chapters](#chapters)
+
 ---
 
 ## Performance & Optimizations
@@ -339,14 +345,15 @@ GPU memory usage for `facebook/nllb-200-3.3B` model:
 | Quantization | N/A         | Off         | Opt-in for max speed |
 
 - [Chapters](#chapters)
+
 ### CLI examples
 
 ```bash
 # Maximum speed with 4-bit quantization
-python main.py input.ass --src en --tgt pl --quantize --quantize-bits 4
+python subtitle_translator.py input.ass --src en --tgt pl --quantize --quantize-bits 4
 
 # Balanced: FP16 and larger batch
-python main.py input.ass --src en --tgt pl --fp16 --batch-size 32
+python subtitle_translator.py input.ass --src en --tgt pl --fp16 --batch-size 32
 ```
 
 _Memory and compatibility notes:_
@@ -355,6 +362,7 @@ _Memory and compatibility notes:_
 - Quantization requires `bitsandbytes` and CUDA GPU.
 - Adaptive batch sizing will reduce batch size on OOM errors automatically.
 - [Chapters](#chapters)
+
 ---
 
 ## Troubleshooting
@@ -368,6 +376,7 @@ Common issues and fixes:
 - Tags translated into output → ensure input file is a valid .ass and tags match supported patterns
 
 - [Chapters](#chapters)
+
 ---
 
 ## Testing
@@ -388,11 +397,12 @@ OK
 There are also optimization tests `test_optimizations.py` described in the performance docs.
 
 - [Chapters](#chapters)
+
 ---
 
 ## Developer notes
 
-- Everything core lives in `main.py`.
+- Everything core lives in `subtitle_translator.py`.
 - Key public entrypoints: the `SubtitleTranslator` class, `run_gui()` and `run_cli()`.
 - Add new languages by editing `LANG_CODES` mapping in the translator class.
 - Adjust translation parameters in `translate()` (beam size, max tokens).
@@ -405,6 +415,7 @@ Small contributors checklist:
 - Keep header parsing for `.ass` files intact
 
 - [Chapters](#chapters)
+
 ---
 
 ---

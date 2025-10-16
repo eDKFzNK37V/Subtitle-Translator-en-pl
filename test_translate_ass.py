@@ -108,7 +108,7 @@ sys.modules['tqdm'] = mock_tqdm  # type: ignore
 
 # Now import from main.py
 try:
-    from subtitle_translator import SubtitleTranslator
+    from main import SubtitleTranslator
 except ImportError:
     # Fallback for old structure
     from translate_ass import ASSTranslator as SubtitleTranslator  # type: ignore
