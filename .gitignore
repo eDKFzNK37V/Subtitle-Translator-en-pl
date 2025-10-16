@@ -3,7 +3,7 @@
 
 !.gitignore
 !README.md
-!main.py
+!subtitle-translator.py
 !requirements.txt
 !*.md
 !LICENSE
