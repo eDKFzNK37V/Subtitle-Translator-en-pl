@@ -392,9 +392,10 @@ class SubtitleTranslator:
                     generated = self.model.generate(
                         **encoded,
                         forced_bos_token_id=tgt_id,
-                        max_new_tokens=256,  # Use max_new_tokens instead of max_length
+                        max_new_tokens=120,  # Use max_new_tokens instead of max_length
                         num_beams=num_beams,
-                        early_stopping=True
+                        early_stopping=True,
+                        use_cache=True
                     )
 
                 translated_batch = self.tokenizer.batch_decode(generated, skip_special_tokens=True)

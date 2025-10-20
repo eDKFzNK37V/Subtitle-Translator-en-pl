@@ -375,7 +375,7 @@ Common issues and fixes:
 - Slow translation on CPU → consider using GPU or a smaller model
 - Tags translated into output → ensure input file is a valid .ass and tags match supported patterns
 
-- If you encounter the problem that is not described there or is not suited for your platform, pm me or create an issue.
+- If you encounter a problem that is not described there or is not suited for your platform, pm me or create an issue.
 
 - [Chapters](#chapters)
 
