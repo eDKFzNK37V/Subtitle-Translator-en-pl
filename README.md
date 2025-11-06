@@ -1,6 +1,6 @@
 # Subtitle Translator (English ↔ Polish, etc.)
 
-A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and `.txt` formats. Powered by NLLB models (Meta AI) with optional LoRA adapter support for custom fine-tuned models. Includes both a GUI and CLI.
+A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and `.txt` formats. Powered by NLLB models (Meta AI) with optional LoRA adapter support for custom fine-tuned models. Includes both a GUI and CLI.It's suited for Polish language.
 
 ---
 
@@ -374,6 +374,8 @@ Common issues and fixes:
 - Out of memory → enable quantization, reduce batch size, or use CPU mode
 - Slow translation on CPU → consider using GPU or a smaller model
 - Tags translated into output → ensure input file is a valid .ass and tags match supported patterns
+
+- If you encounter a problem that is not described there or is not suited for your platform, pm me or create an issue.
 
 - [Chapters](#chapters)
 
