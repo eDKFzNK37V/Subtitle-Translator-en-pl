@@ -316,7 +316,8 @@ class SubtitleTranslator:
                     f.write(f"  {k}: {v}\n")
                 f.write("\n")
             if duration is not None:
-                f.write(f"Duration: {duration:.2f} seconds\n\n")
+                f.write(f"Duration: {duration:.2f} seconds\n")
+                f.write(f"Lines translated: {len(originals)}\n\n")
             for i, (orig, trans) in enumerate(zip(originals, translations), 1):
                 f.write(f"[Line {i}]\n")
                 f.write(f"Original:    {orig}\n")
