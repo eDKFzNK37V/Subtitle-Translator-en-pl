@@ -9,12 +9,11 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 - **Batch translation** with NLLB-200 (1.3B/3.3B) or your own LoRA adapters
 - **⚡ 10× faster** with optimizations: FP16, quantization, adaptive batching
 - **GUI** (Tkinter) and **CLI** modes
-- **Speaker grouping** for `.ass` files
+- **Speakers grouping** for `.ass` files(should improve the context translation for dialogues)
 - **Subtitle tag protection** and restoration
 - **No file overwrite**: output files are auto-incremented if a name conflict exists
 - **Customizable batch size, beam search, and \N tag insertion**
-- **Translation log** for every run
-
+- **Translation log** for every run(which includes things like: how much time it took;how many lines were translated; comparasion originals ---> translated; device and operation time)
 ---
 
 ## Chapters
@@ -67,7 +66,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-- CPU-only (if you don't have CUDA):
+- CPU-only (if you don't have device with CUDA cores (NVIDIA cards):
 
 ```bash
 pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu
