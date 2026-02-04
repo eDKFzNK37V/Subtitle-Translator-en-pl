@@ -1,3 +1,5 @@
+Keep in mind that this project was made entirely for fun and to test capabilities of LLMs and Visual Studio Code editor.
+
 # Subtitle Translator (English ↔ Polish, etc.)
 
 A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and `.txt` formats. Powered by NLLB models (Meta AI) with optional LoRA adapter support for custom fine-tuned models. Includes both a GUI and CLI.It's suited for Polish language.
