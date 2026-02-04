@@ -40,8 +40,9 @@ System requirements
 - Python: 3.11 or higher
 - OS: Linux, Windows or macOS
 - GPU (recommended): NVIDIA GPU with CUDA 12.1 support
+- VRAM: At least 4GB (+12GB recommended)
 - RAM: At least 8GB (16GB recommended)
-- Disk space: ~15GB for model and dependencies
+- Disk space: ~25GB for model and dependencies
 
 Step-by-step
 
@@ -330,12 +331,12 @@ GPU memory usage for `facebook/nllb-200-3.3B` model:
 
 | Feature        | FP32 | FP16 | 4-bit Quant | 8-bit Quant |
 | -------------- | ---- | ---- | ----------- | ----------- |
-| GUI            | ✓    | ✓    | ✓           | ✓           |
-| CLI            | ✓    | ✓    | ✓           | ✓           |
-| LoRA adapters  | ✓    | ✓    | ✓           | ✓           |
-| All file types | ✓    | ✓    | ✓           | ✓           |
-| CPU only       | ✓    | ✗    | ✗           | ✗           |
-| Adaptive batch | ✓    | ✓    | ✓           | ✓           |
+| GUI            | ✓    | ✓   | ✓           | ✓           |
+| CLI            | ✓    | ✓   | ✓           | ✓           |
+| LoRA adapters  | ✓    | ✓   | ✓           | ✓           |
+| All file types | ✓    | ✓   | ✓           | ✓           |
+| CPU only       | ✓    | ✗   | ✗           | ✗           |
+| Adaptive batch | ✓    | ✓   | ✓           | ✓           |
 
 ### Default Behavior Changes
 
@@ -410,12 +411,6 @@ There are also optimization tests `test_optimizations.py` described in the perfo
 - Add new languages by editing `LANG_CODES` mapping in the translator class.
 - Adjust translation parameters in `translate()` (beam size, max tokens).
 - GUI is threaded: keep long-running ops off the main thread.
-
-Small contributors checklist:
-
-- Update `requirements.txt` if you add external libraries
-- Add unit tests for new behaviors
-- Keep header parsing for `.ass` files intact
 
 - [Chapters](#chapters)
 
