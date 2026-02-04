@@ -1,4 +1,4 @@
-Keep in mind that this project was made entirely for fun and to test capabilities of LLMs and Visual Studio Code editor.
+`Keep in mind that this project was made entirely for fun and to test capabilities of LLMs and Visual Studio Code editor. (Don't use it for professional purposes because I cannot guarantee you the correctness of the translation.)`
 
 # Subtitle Translator (English ↔ Polish, etc.)
 
