@@ -208,8 +208,15 @@ class SubtitleTranslator:
 
     @classmethod
     def get_max_new_tokens(cls, tgt_lang: str, tgt_code: Optional[str] = None) -> int:
-        """Return max_new_tokens for tgt_lang (short) or tgt_code (NLLB), then default."""
-        lang_key = tgt_lang if tgt_lang in cls.LANG_CODES else cls._LANG_CODE_REVERSE_MAP.get(tgt_lang, tgt_lang)
+        """Return max_new_tokens for tgt_lang, then tgt_code, then default.
+
+        tgt_lang may be a short code (e.g. pl) or an NLLB code (e.g. pol_Latn).
+        tgt_code is the resolved NLLB code when tgt_lang is a short code.
+        """
+        if tgt_lang in cls.LANG_CODES:
+            lang_key = tgt_lang
+        else:
+            lang_key = cls._LANG_CODE_REVERSE_MAP.get(tgt_lang, tgt_lang)
         code_key = cls._LANG_CODE_REVERSE_MAP.get(tgt_code, tgt_code) if tgt_code else None
         max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(lang_key)
         if max_new_tokens is not None:
