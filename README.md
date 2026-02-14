@@ -346,6 +346,8 @@ GPU memory usage for `facebook/nllb-200-3.3B` model:
 | FP16 mode    | Off         | On (GPU)    | 1.5× faster, free    |
 | Quantization | N/A         | Off         | Opt-in for max speed |
 
+- Polish targets use a higher `max_new_tokens` limit (150) to reduce truncation from morphological expansion.
+
 - [Chapters](#chapters)
 
 ### CLI examples

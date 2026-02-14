@@ -190,6 +190,13 @@ class TestSubtitleTranslator(unittest.TestCase):
         translator = SubtitleTranslator()
         self.assertEqual(translator.num_beams, 4)
 
+    def test_polish_max_new_tokens(self):
+        """Ensure Polish gets a higher max_new_tokens limit."""
+        default_tokens = SubtitleTranslator.DEFAULT_MAX_NEW_TOKENS
+        self.assertEqual(SubtitleTranslator.get_max_new_tokens('pl'), 150)
+        self.assertEqual(SubtitleTranslator.get_max_new_tokens('pol_Latn'), 150)
+        self.assertEqual(SubtitleTranslator.get_max_new_tokens('fr'), default_tokens)
+
 
 def run_tests():
     """Run all tests."""

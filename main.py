@@ -51,6 +51,11 @@ class SubtitleTranslator:
         'fr': 'fra_Latn',
         'de': 'deu_Latn',
     }
+    DEFAULT_MAX_NEW_TOKENS = 120
+    LANG_MAX_NEW_TOKENS = {
+        'pl': 150,
+        'pol_Latn': 150,
+    }
     
     # Only match {\...} tags, not \N or similar linebreaks
     TAG_ONLY = re.compile(r"({\\.*?})")
@@ -199,6 +204,17 @@ class SubtitleTranslator:
         if elapsed > 10:
             print(f"[PROFILE] protect_tags: {elapsed:.2f} ms for {len(text)} chars")
         return clean_text, ph_map
+
+    @classmethod
+    def get_max_new_tokens(cls, tgt_lang: str, tgt_code: Optional[str] = None) -> int:
+        max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(tgt_lang)
+        if max_new_tokens is not None:
+            return max_new_tokens
+        if tgt_code:
+            max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(tgt_code)
+            if max_new_tokens is not None:
+                return max_new_tokens
+        return cls.DEFAULT_MAX_NEW_TOKENS
     
     def restore_tags(self, translated: str, ph_map: list) -> str:
         """
@@ -340,6 +356,7 @@ class SubtitleTranslator:
         tgt_code = self.LANG_CODES.get(tgt_lang, tgt_lang)
         self.tokenizer.src_lang = src_code
         tgt_id = self.tokenizer.convert_tokens_to_ids(tgt_code)
+        max_new_tokens = self.get_max_new_tokens(tgt_lang, tgt_code)
 
         current_batch_size = batch_size or self.batch_size
         num_beams = num_beams or self.num_beams
@@ -393,7 +410,7 @@ class SubtitleTranslator:
                     generated = self.model.generate(
                         **encoded,
                         forced_bos_token_id=tgt_id,
-                        max_new_tokens=120,  # Use max_new_tokens instead of max_length
+                        max_new_tokens=max_new_tokens,  # Use max_new_tokens instead of max_length
                         num_beams=num_beams,
                         early_stopping=True,
                         use_cache=True
