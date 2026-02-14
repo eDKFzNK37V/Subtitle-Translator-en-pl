@@ -1,3 +1,5 @@
+`Keep in mind that this project was made entirely for fun and to test capabilities of LLMs and Visual Studio Code editor. (Don't use it for professional purposes because I cannot guarantee you the correctness of the translation.)`
+
 # Subtitle Translator (English ↔ Polish, etc.)
 
 A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and `.txt` formats. Powered by NLLB models (Meta AI) with optional LoRA adapter support for custom fine-tuned models. Includes both a GUI and CLI.It's suited for Polish language.
@@ -9,12 +11,11 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 - **Batch translation** with NLLB-200 (1.3B/3.3B) or your own LoRA adapters
 - **⚡ 10× faster** with optimizations: FP16, quantization, adaptive batching
 - **GUI** (Tkinter) and **CLI** modes
-- **Speaker grouping** for `.ass` files
+- **Speakers grouping** for `.ass` files(should improve the context translation for dialogues)
 - **Subtitle tag protection** and restoration
 - **No file overwrite**: output files are auto-incremented if a name conflict exists
 - **Customizable batch size, beam search, and \N tag insertion**
-- **Translation log** for every run
-
+- **Translation log** for every run(which includes things like: how much time it took;how many lines were translated; comparasion originals ---> translated; device and operation time)
 ---
 
 ## Chapters
@@ -39,8 +40,9 @@ System requirements
 - Python: 3.11 or higher
 - OS: Linux, Windows or macOS
 - GPU (recommended): NVIDIA GPU with CUDA 12.1 support
+- VRAM: At least 4GB (+12GB recommended)
 - RAM: At least 8GB (16GB recommended)
-- Disk space: ~15GB for model and dependencies
+- Disk space: ~25GB for model and dependencies
 
 Step-by-step
 
@@ -67,7 +69,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-- CPU-only (if you don't have CUDA):
+- CPU-only (if you don't have device with CUDA cores (NVIDIA cards):
 
 ```bash
 pip install torch torchaudio torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -111,17 +113,17 @@ Common CLI flags:
 ## GUI Layout
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ Subtitle Translator (NLLB)                                              [_][□][X] │
-├──────────────────────────────────────────────────────────────────────────────┤
-│ File Selection                                                            │
+┌────────────────────────────────────────────────────────────────────────────┐
+│ Subtitle Translator (NLLB)                                       [_][□][X] │
+├────────────────────────────────────────────────────────────────────────────┤
+│ File Selection                                                             │
 │ ┌────────────────────────────────────────────────────────────────────────┐ │
 │ │ File:           [______________________________] [Browse]              │ │
 │ │ LoRA Adapter:   [______________________________] [Browse]              │ │
 │ └────────────────────────────────────────────────────────────────────────┘ │
 │ Translation Settings                                                       │
 │ ┌────────────────────────────────────────────────────────────────────────┐ │
-│ │ Source: [en ▼]  Target: [pl ▼]  Format: [ass ▼]                       │ │
+│ │ Source: [en ▼]  Target: [pl ▼]  Format: [ass ▼]                        │ │
 │ └────────────────────────────────────────────────────────────────────────┘ │
 │ Advanced Options                                                           │
 │ ┌────────────────────────────────────────────────────────────────────────┐ │
@@ -133,10 +135,10 @@ Common CLI flags:
 │ │ [x] FP16 (half precision)  [ ] Quantization  Bits: [4 ▼]               │ │
 │ └────────────────────────────────────────────────────────────────────────┘ │
 │                                                                            │
-│ Translation: 0%                                                            │
-│ Ready                                                                      │
+│                          Translation: 0%                                   │
+│                               Ready                                        │
 │                                                                            │
-│                [ Start Translation ]                                       │
+│                       [ Start Translation ]                                │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -329,12 +331,12 @@ GPU memory usage for `facebook/nllb-200-3.3B` model:
 
 | Feature        | FP32 | FP16 | 4-bit Quant | 8-bit Quant |
 | -------------- | ---- | ---- | ----------- | ----------- |
-| GUI            | ✓    | ✓    | ✓           | ✓           |
-| CLI            | ✓    | ✓    | ✓           | ✓           |
-| LoRA adapters  | ✓    | ✓    | ✓           | ✓           |
-| All file types | ✓    | ✓    | ✓           | ✓           |
-| CPU only       | ✓    | ✗    | ✗           | ✗           |
-| Adaptive batch | ✓    | ✓    | ✓           | ✓           |
+| GUI            | ✓    | ✓   | ✓           | ✓           |
+| CLI            | ✓    | ✓   | ✓           | ✓           |
+| LoRA adapters  | ✓    | ✓   | ✓           | ✓           |
+| All file types | ✓    | ✓   | ✓           | ✓           |
+| CPU only       | ✓    | ✗   | ✗           | ✗           |
+| Adaptive batch | ✓    | ✓   | ✓           | ✓           |
 
 ### Default Behavior Changes
 
@@ -409,12 +411,6 @@ There are also optimization tests `test_optimizations.py` described in the perfo
 - Add new languages by editing `LANG_CODES` mapping in the translator class.
 - Adjust translation parameters in `translate()` (beam size, max tokens).
 - GUI is threaded: keep long-running ops off the main thread.
-
-Small contributors checklist:
-
-- Update `requirements.txt` if you add external libraries
-- Add unit tests for new behaviors
-- Keep header parsing for `.ass` files intact
 
 - [Chapters](#chapters)
 
