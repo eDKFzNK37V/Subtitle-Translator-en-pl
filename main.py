@@ -52,7 +52,7 @@ class SubtitleTranslator:
         'de': 'deu_Latn',
     }
 
-    _LANG_CODE_REVERSE_MAP = {value: key for key, value in LANG_CODES.items()}
+    LANG_CODE_REVERSE_MAP = {value: key for key, value in LANG_CODES.items()}
     DEFAULT_MAX_NEW_TOKENS = 120
     LANG_MAX_NEW_TOKENS = {
         'pl': 150,
@@ -216,8 +216,8 @@ class SubtitleTranslator:
         if tgt_lang in cls.LANG_CODES:
             lang_key = tgt_lang
         else:
-            lang_key = cls._LANG_CODE_REVERSE_MAP.get(tgt_lang, tgt_lang)
-        code_key = cls._LANG_CODE_REVERSE_MAP.get(tgt_code, tgt_code) if tgt_code else None
+            lang_key = cls.LANG_CODE_REVERSE_MAP.get(tgt_lang, tgt_lang)
+        code_key = cls.LANG_CODE_REVERSE_MAP.get(tgt_code, tgt_code) if tgt_code else None
         max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(lang_key)
         if max_new_tokens is not None:
             return max_new_tokens
