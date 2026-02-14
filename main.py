@@ -55,7 +55,6 @@ class SubtitleTranslator:
     DEFAULT_MAX_NEW_TOKENS = 120
     LANG_MAX_NEW_TOKENS = {
         'pl': 150,
-        'pol_Latn': 150,
     }
     
     # Only match {\...} tags, not \N or similar linebreaks
@@ -211,10 +210,14 @@ class SubtitleTranslator:
         max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(tgt_lang)
         if max_new_tokens is not None:
             return max_new_tokens
+        if tgt_lang == cls.LANG_CODES.get('pl'):
+            return cls.LANG_MAX_NEW_TOKENS['pl']
         if tgt_code:
             max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(tgt_code)
             if max_new_tokens is not None:
                 return max_new_tokens
+            if tgt_code == cls.LANG_CODES.get('pl'):
+                return cls.LANG_MAX_NEW_TOKENS['pl']
         return cls.DEFAULT_MAX_NEW_TOKENS
     
     def restore_tags(self, translated: str, ph_map: list) -> str:
