@@ -51,6 +51,7 @@ class SubtitleTranslator:
         'fr': 'fra_Latn',
         'de': 'deu_Latn',
     }
+    LANG_CODES_REV = {value: key for key, value in LANG_CODES.items()}
 
     DEFAULT_MAX_NEW_TOKENS = 120
     LANG_MAX_NEW_TOKENS = {
@@ -207,17 +208,15 @@ class SubtitleTranslator:
 
     @classmethod
     def get_max_new_tokens(cls, tgt_lang: str, tgt_code: Optional[str] = None) -> int:
-        max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(tgt_lang)
+        normalized_lang = cls.LANG_CODES_REV.get(tgt_lang, tgt_lang)
+        normalized_code = cls.LANG_CODES_REV.get(tgt_code, tgt_code) if tgt_code else None
+        max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(normalized_lang)
         if max_new_tokens is not None:
             return max_new_tokens
-        if tgt_lang == cls.LANG_CODES.get('pl'):
-            return cls.LANG_MAX_NEW_TOKENS['pl']
-        if tgt_code:
-            max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(tgt_code)
+        if normalized_code:
+            max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(normalized_code)
             if max_new_tokens is not None:
                 return max_new_tokens
-            if tgt_code == cls.LANG_CODES.get('pl'):
-                return cls.LANG_MAX_NEW_TOKENS['pl']
         return cls.DEFAULT_MAX_NEW_TOKENS
     
     def restore_tags(self, translated: str, ph_map: list) -> str:
