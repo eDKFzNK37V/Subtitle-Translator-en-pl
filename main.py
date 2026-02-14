@@ -209,9 +209,6 @@ class SubtitleTranslator:
     def get_max_new_tokens(cls, tgt_lang: str, tgt_code: Optional[str] = None) -> int:
         """Return max_new_tokens for the target language code or its NLLB variant."""
         lang_codes_rev = cls.LANG_CODES_REV
-        if len(lang_codes_rev) != len(cls.LANG_CODES):
-            lang_codes_rev = {value: key for key, value in cls.LANG_CODES.items()}
-            cls.LANG_CODES_REV = lang_codes_rev
         short_lang = lang_codes_rev.get(tgt_lang, tgt_lang)
         short_code = lang_codes_rev.get(tgt_code, tgt_code) if tgt_code else None
         max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(short_lang)
