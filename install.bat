@@ -65,7 +65,7 @@ if %errorlevel% neq 0 (
 )
 
 set "INSTALL_TIMESTAMP="
-for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH-mm-ss" 2^>nul') do set "INSTALL_TIMESTAMP=%%I"
+for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-ddTHH:mm:ss" 2^>nul') do set "INSTALL_TIMESTAMP=%%I"
 if not defined INSTALL_TIMESTAMP (
     set "INSTALL_TIMESTAMP=%DATE% %TIME%"
 )
