@@ -64,11 +64,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-set "INSTALL_TIMESTAMP="
-for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-ddTHH:mm:ss" 2^>nul') do set "INSTALL_TIMESTAMP=%%I"
-if not defined INSTALL_TIMESTAMP (
-    set "INSTALL_TIMESTAMP=%DATE% %TIME%"
-)
+set "INSTALL_TIMESTAMP=%DATE% %TIME%"
 echo installed %INSTALL_TIMESTAMP%>"%INSTALL_MARKER%"
 
 echo.

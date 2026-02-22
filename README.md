@@ -78,7 +78,7 @@ pip install transformers sentencepiece protobuf tqdm
 
 Notes on model download: On first run the NLLB model will be downloaded automatically and may take a while (several minutes to tens of minutes depending on internet speed).
 
-### Windows quick install
+## Windows quick install
 
 1. Ensure Python is installed (see steps above).
 2. Run `install.bat` to create the `.venv` and install dependencies.
