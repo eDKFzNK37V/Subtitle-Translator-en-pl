@@ -76,7 +76,7 @@ except ImportError:
 
 # Create mock torch module
 mock_torch = type('MockTorch', (), {
-    'cuda': type('cuda', (), {'is_available': lambda: False, 'empty_cache': lambda: None, 'OutOfMemoryError': Exception})(),
+    'cuda': type('cuda', (), {'is_available': lambda *args, **kwargs: False, 'empty_cache': lambda: None, 'OutOfMemoryError': Exception})(),
     'no_grad': lambda: type('context', (), {'__enter__': lambda self: None, '__exit__': lambda self, *args: None})(),
     'backends': type('backends', (), {
         'cuda': type('cuda', (), {'matmul': type('matmul', (), {'allow_tf32': True})()})(),
@@ -184,6 +184,18 @@ class TestSubtitleTranslator(unittest.TestCase):
         # Check NLLB format
         self.assertEqual(codes['en'], 'eng_Latn')
         self.assertEqual(codes['pl'], 'pol_Latn')
+
+    def test_default_num_beams(self):
+        """Ensure default num_beams favors translation quality."""
+        translator = SubtitleTranslator()
+        self.assertEqual(translator.num_beams, 4)
+
+    def test_polish_max_new_tokens(self):
+        """Ensure Polish gets a higher max_new_tokens limit."""
+        default_tokens = SubtitleTranslator.DEFAULT_MAX_NEW_TOKENS
+        self.assertEqual(SubtitleTranslator.get_max_new_tokens('pl'), 150)
+        self.assertEqual(SubtitleTranslator.get_max_new_tokens('pol_Latn'), 150)
+        self.assertEqual(SubtitleTranslator.get_max_new_tokens('fr'), default_tokens)
 
 
 def run_tests():

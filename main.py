@@ -51,12 +51,18 @@ class SubtitleTranslator:
         'fr': 'fra_Latn',
         'de': 'deu_Latn',
     }
+
+    LANG_CODE_REVERSE_MAP = {value: key for key, value in LANG_CODES.items()}
+    DEFAULT_MAX_NEW_TOKENS = 120
+    LANG_MAX_NEW_TOKENS = {
+        'pl': 150,
+    }
     
     # Only match {\...} tags, not \N or similar linebreaks
     TAG_ONLY = re.compile(r"({\\.*?})")
     TAG_OR_ESCAPE = re.compile(r"({\\.*?})|(\\[NnHhRr])")
     
-    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 32, num_beams: int = 2, 
+    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 32, num_beams: int = 4, 
                  lora_adapter: Optional[str] = None, use_fp16: bool = True, use_quantization: bool = False,
                  quantization_bits: int = 4):
         """Initialize translator with NLLB model and optional LoRA adapter.
@@ -199,6 +205,27 @@ class SubtitleTranslator:
         if elapsed > 10:
             print(f"[PROFILE] protect_tags: {elapsed:.2f} ms for {len(text)} chars")
         return clean_text, ph_map
+
+    @classmethod
+    def get_max_new_tokens(cls, tgt_lang: str, tgt_code: Optional[str] = None) -> int:
+        """Return max_new_tokens for tgt_lang, then tgt_code, then default.
+
+        tgt_lang may be a short code (e.g. pl) or an NLLB code (e.g. pol_Latn).
+        tgt_code is the resolved NLLB code when tgt_lang is a short code.
+        """
+        if tgt_lang in cls.LANG_CODES:
+            lang_key = tgt_lang
+        else:
+            lang_key = cls.LANG_CODE_REVERSE_MAP.get(tgt_lang, tgt_lang)
+        code_key = cls.LANG_CODE_REVERSE_MAP.get(tgt_code, tgt_code) if tgt_code else None
+        max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(lang_key)
+        if max_new_tokens is not None:
+            return max_new_tokens
+        if code_key:
+            max_new_tokens = cls.LANG_MAX_NEW_TOKENS.get(code_key)
+            if max_new_tokens is not None:
+                return max_new_tokens
+        return cls.DEFAULT_MAX_NEW_TOKENS
     
     def restore_tags(self, translated: str, ph_map: list) -> str:
         """
@@ -340,6 +367,7 @@ class SubtitleTranslator:
         tgt_code = self.LANG_CODES.get(tgt_lang, tgt_lang)
         self.tokenizer.src_lang = src_code
         tgt_id = self.tokenizer.convert_tokens_to_ids(tgt_code)
+        max_new_tokens = self.get_max_new_tokens(tgt_lang, tgt_code)
 
         current_batch_size = batch_size or self.batch_size
         num_beams = num_beams or self.num_beams
@@ -393,7 +421,7 @@ class SubtitleTranslator:
                     generated = self.model.generate(
                         **encoded,
                         forced_bos_token_id=tgt_id,
-                        max_new_tokens=120,  # Use max_new_tokens instead of max_length
+                        max_new_tokens=max_new_tokens,  # Use max_new_tokens instead of max_length
                         num_beams=num_beams,
                         early_stopping=True,
                         use_cache=True
@@ -803,7 +831,7 @@ def run_gui():
     file_type = tk.StringVar(value="ass")
     n_tag_wordidx = tk.IntVar(value=0)
     batch_size_var = tk.IntVar(value=32)  # Increased default from 8 to 32
-    num_beams_var = tk.IntVar(value=2)
+    num_beams_var = tk.IntVar(value=4)
     use_fp16_var = tk.BooleanVar(value=True)
     use_quantization_var = tk.BooleanVar(value=False)
     quantization_bits_var = tk.StringVar(value="4")
@@ -1190,7 +1218,7 @@ def run_cli():
     parser.add_argument("--nwordix", type=int, default=0, help="Word index for \\N tag insertion (0=auto, .ass only)")
     parser.add_argument("--enable-grouping", action="store_true", help="Enable speaker-based grouping for .ass files with rich speaker names (default: disabled)")
     parser.add_argument("--batch-size", type=int, default=32, help="Initial batch size, adaptive on OOM (default: 32)")
-    parser.add_argument("--num-beams", type=int, default=2, help="Beam search width (default: 2)")
+    parser.add_argument("--num-beams", type=int, default=4, help="Beam search width (default: 4)")
     parser.add_argument("--lora-adapter", default=None, help="Path to LoRA adapter directory (optional)")
     parser.add_argument("--fp16", action="store_true", default=True, help="Use FP16 half precision (default: enabled)")
     parser.add_argument("--no-fp16", action="store_false", dest="fp16", help="Disable FP16 half precision")

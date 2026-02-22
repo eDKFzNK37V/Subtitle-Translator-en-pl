@@ -78,6 +78,12 @@ pip install transformers sentencepiece protobuf tqdm
 
 Notes on model download: On first run the NLLB model will be downloaded automatically and may take a while (several minutes to tens of minutes depending on internet speed).
 
+## Windows Quick Install
+
+1. Ensure Python is installed (see steps above).
+2. Run `install.bat` to create the `.venv` and install dependencies.
+3. Run `run.bat` to launch the app.
+
 - [Chapters](#chapters)
 
 ---
@@ -103,7 +109,7 @@ Common CLI flags:
 `--batch-size N` — set batch size (default optimized to 32)
 `--fp16` / `--no-fp16` — enable/disable FP16
 `--quantize --quantize-bits 4` — enable quantization (requires bitsandbytes)
-`--num-beams N` — set beam search width (higher = better quality, slower; default: 2)
+`--num-beams N` — set beam search width (higher = better quality, slower; default: 4)
 `--enable-grouping` — group consecutive dialogue lines by speaker (for .ass files, ONLY if the dialogues have name metadata in it; default: off)
 
 - [Chapters](#chapters)
@@ -127,7 +133,7 @@ Common CLI flags:
 │ └────────────────────────────────────────────────────────────────────────┘ │
 │ Advanced Options                                                           │
 │ ┌────────────────────────────────────────────────────────────────────────┐ │
-│ │ \N index: [ 0 ]  Batch: [32]  Beams: [2]                               │ │
+│ │ \N index: [ 0 ]  Batch: [32]  Beams: [4]                               │ │
 │ │ [ ] Group by speaker (.ass only)                                       │ │
 │ └────────────────────────────────────────────────────────────────────────┘ │
 │ Performance Optimizations                                                  │
@@ -345,6 +351,8 @@ GPU memory usage for `facebook/nllb-200-3.3B` model:
 | Batch size   | 8           | 32          | 3-4× faster          |
 | FP16 mode    | Off         | On (GPU)    | 1.5× faster, free    |
 | Quantization | N/A         | Off         | Opt-in for max speed |
+
+- Polish targets use a higher `max_new_tokens` limit (150) to reduce truncation from morphological expansion.
 
 - [Chapters](#chapters)
 
