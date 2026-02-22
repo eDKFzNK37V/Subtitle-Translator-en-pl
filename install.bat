@@ -64,7 +64,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo installed>"%INSTALL_MARKER%"
+echo installed %DATE% %TIME%>"%INSTALL_MARKER%"
 
 echo.
 echo ========================================
