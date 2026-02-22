@@ -65,10 +65,8 @@ if %errorlevel% neq 0 (
 )
 
 set "INSTALL_TIMESTAMP="
-for /f "tokens=2 delims==" %%I in ('wmic os get localdatetime /value 2^>nul') do set "INSTALL_TIMESTAMP=%%I"
-if defined INSTALL_TIMESTAMP (
-    set "INSTALL_TIMESTAMP=%INSTALL_TIMESTAMP:~0,4%-%INSTALL_TIMESTAMP:~4,2%-%INSTALL_TIMESTAMP:~6,2% %INSTALL_TIMESTAMP:~8,2%:%INSTALL_TIMESTAMP:~10,2%:%INSTALL_TIMESTAMP:~12,2%"
-) else (
+for /f %%I in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HH-mm-ss" 2^>nul') do set "INSTALL_TIMESTAMP=%%I"
+if not defined INSTALL_TIMESTAMP (
     set "INSTALL_TIMESTAMP=%DATE% %TIME%"
 )
 echo installed %INSTALL_TIMESTAMP%>"%INSTALL_MARKER%"
