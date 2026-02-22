@@ -65,7 +65,7 @@ if %errorlevel% neq 0 (
 )
 
 set "INSTALL_TIMESTAMP=%DATE% %TIME%"
-echo installed %INSTALL_TIMESTAMP%>"%INSTALL_MARKER%"
+echo installed %INSTALL_TIMESTAMP% > "%INSTALL_MARKER%"
 
 echo.
 echo ========================================
