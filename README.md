@@ -9,7 +9,6 @@ A unified, easy-to-use subtitle translation tool supporting `.ass`, `.srt`, and 
 ## Features
 
 - **Batch translation** with NLLB-200 (1.3B/3.3B) or your own LoRA adapters
-- **⚡ 10× faster** with optimizations: FP16, quantization, adaptive batching
 - **GUI** (Tkinter) and **CLI** modes
 - **Speakers grouping** for `.ass` files(should improve the context translation for dialogues)
 - **Subtitle tag protection** and restoration
@@ -49,18 +48,22 @@ Step-by-step
 1. **Clone the repository:**
 
 ```bash
-git clone https://github.com/eDKFzNK37V/NLLB-3.3-test.git
-cd NLLB-3.3-test
+git clone https://github.com/eDKFzNK37V/Subtitle-Translator-en-pl.git
+cd Subtitle-Translator-en-pl
 ```
 
 2. Install Python 3.11+ (use your platform's package manager or download from python.org).
-3. (Optional) Create and activate a virtual environment:
+3. (Optional but advised) Create and activate a virtual environment:
 
 ```bash
-python3.11 -m venv venv
-source venv/bin/activate
+python3.11 -m venv .venv
+source .venv/bin/activate
 ```
 
+```Windows CMD
+python.exe -m venv .venv
+.venv\Scripts\Activate
+```
 4. Install dependencies:
 
 - GPU (recommended):
@@ -87,9 +90,11 @@ Notes on model download: On first run the NLLB model will be downloaded automati
 GUI mode (default):
 
 ```bash
+python3 subtitle_translator.py
+```
+```Windows CMD
 python subtitle_translator.py
 ```
-
 CLI mode:
 
 ```bash
