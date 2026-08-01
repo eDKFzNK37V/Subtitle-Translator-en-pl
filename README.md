@@ -87,13 +87,13 @@ Notes on model download: On first run the NLLB model will be downloaded automati
 GUI mode (default):
 
 ```bash
-python subtitle_translator.py
+python main.py
 ```
 
 CLI mode:
 
 ```bash
-python subtitle_translator.py input.ass --src en --tgt pl
+python main.py input.ass --src en --tgt pl
 ```
 
 Common CLI flags:
@@ -103,7 +103,7 @@ Common CLI flags:
 `--batch-size N` — set batch size (default optimized to 32)
 `--fp16` / `--no-fp16` — enable/disable FP16
 `--quantize --quantize-bits 4` — enable quantization (requires bitsandbytes)
-`--num-beams N` — set beam search width (higher = better quality, slower; default: 2)
+`--num-beams N` — set beam search width (higher = better quality, slower; default: 4)
 `--enable-grouping` — group consecutive dialogue lines by speaker (for .ass files, ONLY if the dialogues have name metadata in it; default: off)
 
 - [Chapters](#chapters)
@@ -127,7 +127,7 @@ Common CLI flags:
 │ └────────────────────────────────────────────────────────────────────────┘ │
 │ Advanced Options                                                           │
 │ ┌────────────────────────────────────────────────────────────────────────┐ │
-│ │ \N index: [ 0 ]  Batch: [32]  Beams: [2]                               │ │
+│ │ \N index: [ 0 ]  Batch: [32]  Beams: [4]                               │ │
 │ │ [ ] Group by speaker (.ass only)                                       │ │
 │ └────────────────────────────────────────────────────────────────────────┘ │
 │ Performance Optimizations                                                  │
@@ -177,13 +177,13 @@ The GUI runs translation in a background thread to avoid freezing. After transla
 Single file translation:
 
 ```bash
-python subtitle_translator.py input.ass --src en --tgt fr
+python main.py input.ass --src en --tgt fr
 ```
 
 Batch translation (example):
 
 ```bash
-for f in input_subs/*.ass; do python subtitle_translator.py "$f" --src en --tgt fr; done
+for f in input_subs/*.ass; do python main.py "$f" --src en --tgt fr; done
 ```
 
 Advanced examples:
@@ -191,13 +191,13 @@ Advanced examples:
 - CPU mode:
 
 ```bash
-python subtitle_translator.py input.ass --src en --tgt fr --device cpu
+python main.py input.ass --src en --tgt fr --no-fp16
 ```
 
 - Different model:
 
 ```bash
-python subtitle_translator.py input.ass --src en --tgt fr --model facebook/nllb-200-1.3B
+python main.py input.ass --src en --tgt fr --model facebook/nllb-200-distilled-1.3B
 ```
 
 ---
@@ -352,10 +352,10 @@ GPU memory usage for `facebook/nllb-200-3.3B` model:
 
 ```bash
 # Maximum speed with 4-bit quantization
-python subtitle_translator.py input.ass --src en --tgt pl --quantize --quantize-bits 4
+python main.py input.ass --src en --tgt pl --quantize --quantize-bits 4
 
 # Balanced: FP16 and larger batch
-python subtitle_translator.py input.ass --src en --tgt pl --fp16 --batch-size 32
+python main.py input.ass --src en --tgt pl --fp16 --batch-size 32
 ```
 
 _Memory and compatibility notes:_
@@ -406,7 +406,7 @@ There are also optimization tests `test_optimizations.py` described in the perfo
 
 ## Developer notes
 
-- Everything core lives in `subtitle_translator.py`.
+- Everything core lives in `main.py`.
 - Key public entrypoints: the `SubtitleTranslator` class, `run_gui()` and `run_cli()`.
 - Add new languages by editing `LANG_CODES` mapping in the translator class.
 - Adjust translation parameters in `translate()` (beam size, max tokens).

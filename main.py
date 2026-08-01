@@ -56,7 +56,9 @@ class SubtitleTranslator:
     TAG_ONLY = re.compile(r"({\\.*?})")
     TAG_OR_ESCAPE = re.compile(r"({\\.*?})|(\\[NnHhRr])")
     
-    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 32, num_beams: int = 2, 
+    GROUP_LINE_SEPARATOR = r"{\__LINESEP__}"
+
+    def __init__(self, model_name: str = "facebook/nllb-200-3.3B", batch_size: int = 32, num_beams: int = 4, 
                  lora_adapter: Optional[str] = None, use_fp16: bool = True, use_quantization: bool = False,
                  quantization_bits: int = 4):
         """Initialize translator with NLLB model and optional LoRA adapter.
@@ -389,14 +391,21 @@ class SubtitleTranslator:
                     max_length=512
                 ).to(self.device)
 
+                generate_kwargs = {
+                    "forced_bos_token_id": tgt_id,
+                    "max_new_tokens": 120,
+                    "num_beams": num_beams,
+                    "early_stopping": True,
+                    "use_cache": True,
+                }
+                if tgt_lang == "pl":
+                    generate_kwargs["no_repeat_ngram_size"] = 3
+                    generate_kwargs["repetition_penalty"] = 1.05
+
                 with torch.no_grad():
                     generated = self.model.generate(
                         **encoded,
-                        forced_bos_token_id=tgt_id,
-                        max_new_tokens=120,  # Use max_new_tokens instead of max_length
-                        num_beams=num_beams,
-                        early_stopping=True,
-                        use_cache=True
+                        **generate_kwargs
                     )
 
                 translated_batch = self.tokenizer.batch_decode(generated, skip_special_tokens=True)
@@ -520,15 +529,11 @@ class SubtitleTranslator:
             texts_to_translate = []
             original_texts = []
             all_tags = []
-            n_tag_counts = []
             merged_texts = []
             for group in grouped:
-                merged_text = ' '.join(group["lines"])
+                merged_text = f" {self.GROUP_LINE_SEPARATOR} ".join(group["lines"])
                 original_texts.append(merged_text)
-                n_count = sum(len(re.findall(r'\\N', t, re.IGNORECASE)) for t in group["lines"])
-                n_tag_counts.append(n_count)
-                clean_text = re.sub(r'\\N', ' ', merged_text, flags=re.IGNORECASE)
-                merged_texts.append(clean_text)
+                merged_texts.append(merged_text)
             # Parallel protect_tags
             with ThreadPoolExecutor() as executor:
                 tag_results = list(executor.map(self.protect_tags, merged_texts))
@@ -539,20 +544,22 @@ class SubtitleTranslator:
             translated = self.translate(texts_to_translate, src_lang, tgt_lang,
                                        progress_callback=progress_callback)
 
-            # Restore tags and \N
+            # Restore tags and line separators
             final_texts = []
             for i, trans in enumerate(translated):
                 with_tags = self.restore_tags(trans, all_tags[i])
-                with_n = self.insert_n_tags(with_tags, n_tag_counts[i], n_tag_idx)
-                final_texts.append(with_n)
+                final_texts.append(with_tags)
 
             # Rebuild file: distribute translated group text back to original dialogue lines
             output_lines = header[:]
             idx = 0
             for group, trans in zip(grouped, final_texts):
-                # Split translated text back into lines (naive split)
-                split_trans = trans.split(' ', len(group["lines"]) - 1)
-                for j, orig_line in enumerate(group["lines"]):
+                split_trans = [p.strip() for p in re.split(r'\s*\{\\__LINESEP__\}\s*', trans)]
+                if len(split_trans) < len(group["lines"]):
+                    split_trans.extend([""] * (len(group["lines"]) - len(split_trans)))
+                elif len(split_trans) > len(group["lines"]):
+                    split_trans = split_trans[:len(group["lines"]) - 1] + [' '.join(split_trans[len(group["lines"]) - 1:])]
+                for j, _orig_line in enumerate(group["lines"]):
                     parts = dialogues[idx].split(',', 9)
                     if len(parts) >= 10:
                         parts[9] = split_trans[j] + '\n'
@@ -577,17 +584,13 @@ class SubtitleTranslator:
             texts_to_translate = []
             original_texts = []
             all_tags = []  # Store tags for each line
-            n_tag_counts = []
             clean_texts = []
             for line in dialogues:
                 parts = line.split(',', 9)
                 if len(parts) >= 10:
                     text = parts[9].rstrip('\n')
                     original_texts.append(text)
-                    n_count = len(re.findall(r'\\N', text, re.IGNORECASE))
-                    n_tag_counts.append(n_count)
-                    clean_text = re.sub(r'\\N', ' ', text, flags=re.IGNORECASE)
-                    clean_texts.append(clean_text)
+                    clean_texts.append(text)
             # Parallel protect_tags
             with ThreadPoolExecutor() as executor:
                 tag_results = list(executor.map(self.protect_tags, clean_texts))
@@ -602,8 +605,7 @@ class SubtitleTranslator:
             final_texts = []
             for i, trans in enumerate(translated):
                 with_tags = self.restore_tags(trans, all_tags[i])
-                with_n = self.insert_n_tags(with_tags, n_tag_counts[i], n_tag_idx)
-                final_texts.append(with_n)
+                final_texts.append(with_tags)
 
             # Create log file
             duration = time.time() - start_time
@@ -803,7 +805,8 @@ def run_gui():
     file_type = tk.StringVar(value="ass")
     n_tag_wordidx = tk.IntVar(value=0)
     batch_size_var = tk.IntVar(value=32)  # Increased default from 8 to 32
-    num_beams_var = tk.IntVar(value=2)
+    num_beams_var = tk.IntVar(value=4)
+    model_name_var = tk.StringVar(value="facebook/nllb-200-3.3B")
     use_fp16_var = tk.BooleanVar(value=True)
     use_quantization_var = tk.BooleanVar(value=False)
     quantization_bits_var = tk.StringVar(value="4")
@@ -813,6 +816,7 @@ def run_gui():
     FILE_TYPES = ["ass", "srt", "txt"]
     
     translator = None
+    translator_config = None
     lora_adapter_path = tk.StringVar(value="")
     
     # File Selection Group
@@ -849,6 +853,8 @@ def run_gui():
             lora_adapter_path.set(dirname)
 
     tk.Button(file_frame, text="Browse", command=browse_adapter, width=8).grid(row=1, column=2, padx=2, pady=2)
+    tk.Label(file_frame, text="Model:").grid(row=2, column=0, sticky="w", padx=2, pady=2)
+    tk.Entry(file_frame, textvariable=model_name_var, width=48).grid(row=2, column=1, padx=2, pady=2)
     
     # Language & Format Group
     lang_frame = tk.LabelFrame(root, text="Translation Settings", padx=5, pady=5)
@@ -1105,7 +1111,7 @@ def run_gui():
     
     def start_translation():
         """Start translation in background thread."""
-        nonlocal translator
+        nonlocal translator, translator_config
         
         path = file_path.get()
         if not path or not os.path.exists(path):
@@ -1124,9 +1130,19 @@ def run_gui():
             nonlocal translator
             try:
                 # Load model if needed
-                if translator is None:
+                current_config = (
+                    model_name_var.get().strip() or "facebook/nllb-200-3.3B",
+                    lora_adapter_path.get().strip() or None,
+                    use_fp16_var.get(),
+                    use_quantization_var.get(),
+                    int(quantization_bits_var.get()),
+                    batch_size_var.get(),
+                    num_beams_var.get(),
+                )
+                if translator is None or translator_config != current_config:
                     lora_path = lora_adapter_path.get().strip() or None
                     translator = SubtitleTranslator(
+                        model_name=current_config[0],
                         batch_size=batch_size_var.get(),
                         num_beams=num_beams_var.get(),
                         lora_adapter=lora_path,
@@ -1134,6 +1150,7 @@ def run_gui():
                         use_quantization=use_quantization_var.get(),
                         quantization_bits=int(quantization_bits_var.get())
                     )
+                    translator_config = current_config
 
                 status_label.config(text="Translating...")
                 root.update_idletasks()
@@ -1190,7 +1207,8 @@ def run_cli():
     parser.add_argument("--nwordix", type=int, default=0, help="Word index for \\N tag insertion (0=auto, .ass only)")
     parser.add_argument("--enable-grouping", action="store_true", help="Enable speaker-based grouping for .ass files with rich speaker names (default: disabled)")
     parser.add_argument("--batch-size", type=int, default=32, help="Initial batch size, adaptive on OOM (default: 32)")
-    parser.add_argument("--num-beams", type=int, default=2, help="Beam search width (default: 2)")
+    parser.add_argument("--num-beams", type=int, default=4, help="Beam search width (default: 4)")
+    parser.add_argument("--model", default="facebook/nllb-200-3.3B", help="HuggingFace model name (default: facebook/nllb-200-3.3B)")
     parser.add_argument("--lora-adapter", default=None, help="Path to LoRA adapter directory (optional)")
     parser.add_argument("--fp16", action="store_true", default=True, help="Use FP16 half precision (default: enabled)")
     parser.add_argument("--no-fp16", action="store_false", dest="fp16", help="Disable FP16 half precision")
@@ -1215,6 +1233,7 @@ def run_cli():
     
     # Load translator
     translator = SubtitleTranslator(
+        model_name=args.model,
         batch_size=args.batch_size, 
         num_beams=args.num_beams, 
         lora_adapter=args.lora_adapter,
